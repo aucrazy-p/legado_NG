@@ -176,7 +176,7 @@ private fun homeListeningLargeCaptionColumn(
     return with(density) { maxOf(48.dp.roundToPx(), labelWidth + 4.dp.roundToPx()).toDp() }
 }
 
-/** Metadata midpoint aligns to the 24dp control-frame midpoint, independently of captions. */
+/** Book and chapter titles use the whole area beside the cover, above the controls. */
 @Composable
 private fun HomeListeningRestoredHorizontalForeground(
     context: HomeWidgetContentContext,
@@ -192,14 +192,33 @@ private fun HomeListeningRestoredHorizontalForeground(
         val gap = 12.dp.roundToPx()
         val metadataWidth = width - controlsWidth - gap
         val inline = metadataWidth >= (64.dp + 14.dp + 84.dp * fontScale).roundToPx()
+        val textX = (64.dp + 14.dp).roundToPx()
+        val title = if (inline) subcompose("title") {
+            HomeListeningBookName(context, Modifier.fillMaxWidth(), palette = palette,
+                interactive = true, marquee = true)
+        }.single().measure(Constraints.fixedWidth(width - textX)) else null
+        val cover = if (inline) subcompose("cover") {
+            HomeListeningCover(context, width = 64.dp, interactive = true)
+        }.single().measure(Constraints.fixedWidth(64.dp.roundToPx())) else null
+        val chapterY = title?.let { it.height + 4.dp.roundToPx() } ?: 0
+        val chapter = if (inline) subcompose("chapter") {
+            HomeListeningChapterTitle(context, Modifier.fillMaxWidth(), palette = palette, interactive = true)
+        }.single().measure(Constraints.fixedWidth(width - textX)) else null
+        val detailsY = chapter?.let { chapterY + it.height + 6.dp.roundToPx() } ?: 0
         val pending = context.interactive && context.listening.preparing && !showPreparing
         val measuringContext = context.copy(interactive = false, measuring = true)
         fun information(slot: String, content: HomeWidgetContentContext, preparing: Boolean, minHeight: Int) =
             subcompose(slot) {
-                HomeListeningMetadata(content, preparing, Modifier.fillMaxWidth(), palette = palette,
-                    coverWidth = 64.dp, stacked = !inline && width < (64.dp + 14.dp + 84.dp * fontScale).roundToPx())
-            }.single().measure(Constraints(minWidth = if (inline) metadataWidth else width,
-                maxWidth = if (inline) metadataWidth else width, minHeight = minHeight))
+                if (inline) {
+                    HomeListeningText(content, preparing, Modifier.fillMaxWidth(), palette = palette,
+                        interactive = true, showBookName = false, showChapterTitle = false)
+                } else {
+                    HomeListeningMetadata(content, preparing, Modifier.fillMaxWidth(), palette = palette,
+                        coverWidth = 64.dp, stacked = width < (64.dp + 14.dp + 84.dp * fontScale).roundToPx(),
+                        marqueeBookName = true)
+                }
+            }.single().measure(Constraints(minWidth = if (inline) metadataWidth - textX else width,
+                maxWidth = if (inline) metadataWidth - textX else width, minHeight = minHeight))
         fun controls(slot: String, content: HomeWidgetContentContext, preparing: Boolean, minHeight: Int) =
             subcompose(slot) {
                 HomeListeningRestoredControlPair(content, preparing, palette, styleId, columnWidth)
@@ -209,11 +228,15 @@ private fun HomeListeningRestoredHorizontalForeground(
         val metadata = information("information", context, showPreparing, forecastInfo?.height ?: 0)
         val forecastActions = if (pending) controls("pending-actions", measuringContext, true, 0) else null
         val actions = controls("actions", context, showPreparing, forecastActions?.height ?: 0)
-        val actionY = if (inline) (metadata.height / 2 - 24.dp.roundToPx()).coerceAtLeast(0)
+        val informationHeight = maxOf(detailsY + metadata.height, cover?.height ?: 0)
+        val actionY = if (inline) detailsY + (metadata.height / 2 - 24.dp.roundToPx()).coerceAtLeast(0)
             else metadata.height + gap
-        val height = constraints.constrainHeight(maxOf(metadata.height, actionY + actions.height))
+        val height = constraints.constrainHeight(maxOf(informationHeight, actionY + actions.height))
         layout(width, height) {
-            metadata.placeRelative(0, 0)
+            cover?.placeRelative(0, ((informationHeight - cover.height) / 2).coerceAtLeast(0))
+            title?.placeRelative(textX, 0)
+            chapter?.placeRelative(textX, chapterY)
+            metadata.placeRelative(if (inline) textX else 0, detailsY)
             actions.placeRelative(if (inline) width - controlsWidth else 0, actionY)
         }
     }
@@ -269,10 +292,14 @@ private fun HomeListeningRestoredReferenceBody(
             val pending = context.interactive && context.listening.preparing && !showPreparing
             val measuringContext = context.copy(interactive = false, measuring = true)
             var cover: Placeable? = null
+            var title: Placeable? = null
+            var chapter: Placeable? = null
             var metadata: Placeable? = null
             var actions: Placeable? = null
             var empty: Placeable? = null
             var actionsY = bodyY(reference.actionsY)
+            var detailsY = bodyY(reference.textY)
+            var chapterY = detailsY
             val naturalHeight = if (!hasBook) {
                 val safeWidth = when {
                     !canShowArtwork -> emptyAvailableWidth
@@ -288,10 +315,20 @@ private fun HomeListeningRestoredReferenceBody(
                 cover = subcompose("cover") {
                     HomeListeningCover(context, width = reference.cover.width.dp, interactive = true)
                 }.single().measure(Constraints.fixed(coverWidth, (coverWidth * 4f / 3f).roundToInt()))
+                title = subcompose("title") {
+                    HomeListeningBookName(context, Modifier.fillMaxWidth(), palette = palette,
+                        interactive = true, reference = reference, marquee = true)
+                }.single().measure(Constraints.fixedWidth((width - textX - 14.dp.roundToPx()).coerceAtLeast(1)))
+                chapterY += title.height + px(reference.chapterGap)
+                chapter = subcompose("chapter") {
+                    HomeListeningChapterTitle(context, Modifier.fillMaxWidth(), palette = palette,
+                        interactive = true, reference = reference)
+                }.single().measure(Constraints.fixedWidth((width - textX - 14.dp.roundToPx()).coerceAtLeast(1)))
+                detailsY = chapterY + chapter.height + px(reference.statusGap)
                 fun text(slot: String, content: HomeWidgetContentContext, preparing: Boolean, minHeight: Int) =
                     subcompose(slot) {
                         HomeListeningText(content, preparing, Modifier.fillMaxWidth(), palette = palette,
-                            interactive = true, reference = reference)
+                            interactive = true, reference = reference, showBookName = false, showChapterTitle = false)
                     }.single().measure(Constraints(minWidth = textWidth, maxWidth = textWidth, minHeight = minHeight))
                 fun controls(slot: String, content: HomeWidgetContentContext, preparing: Boolean, minHeight: Int) =
                     subcompose(slot) {
@@ -302,10 +339,13 @@ private fun HomeListeningRestoredReferenceBody(
                 metadata = text("text", context, showPreparing, forecastText?.height ?: 0)
                 val forecastActions = if (pending) controls("pending-actions", measuringContext, true, 0) else null
                 actions = controls("actions", context, showPreparing, forecastActions?.height ?: 0)
-                actionsY += (metadata.height - px(reference.textHeight)).coerceAtLeast(0)
+                val textHeight = title.height + px(reference.chapterGap) + chapter.height +
+                    px(reference.statusGap) + metadata.height
+                actionsY += (textHeight - px(reference.textHeight)).coerceAtLeast(0)
+                actionsY = maxOf(actionsY, detailsY)
                 val captionBottom = actionsY + actions.height
                 maxOf(baseHeight, bodyY(reference.cover.top) + cover.height + 8.dp.roundToPx(),
-                    bodyY(reference.textY) + metadata.height + 8.dp.roundToPx(),
+                    detailsY + metadata.height + 8.dp.roundToPx(),
                     captionBottom + if (night) 62.dp.roundToPx() else 4.dp.roundToPx())
             }
             val height = constraints.constrainHeight(naturalHeight)
@@ -315,12 +355,15 @@ private fun HomeListeningRestoredReferenceBody(
                     contentScale = ContentScale.Fit, alignment = Alignment.BottomEnd)
             }.single().measure(Constraints.fixed(
                 if (story) storySceneWidth else minOf(width, 123.dp.roundToPx()),
-                if (story) 128.dp.roundToPx() else 59.dp.roundToPx(),
+                minOf(if (story) 128.dp.roundToPx() else 59.dp.roundToPx(),
+                    if (title != null) (height - detailsY - 8.dp.roundToPx()).coerceAtLeast(1) else height),
             )) else null
             layout(width, height) {
                 empty?.placeRelative(emptyInset, 8.dp.roundToPx())
                 cover?.placeRelative(coverX, bodyY(reference.cover.top))
-                metadata?.placeRelative(textX, bodyY(reference.textY))
+                title?.placeRelative(textX, bodyY(reference.textY))
+                chapter?.placeRelative(textX, chapterY)
+                metadata?.placeRelative(textX, detailsY)
                 actions?.placeRelative(actionsX, actionsY)
                 artwork?.let { it.placeRelative(width - it.width, (height - it.height).coerceAtLeast(0)) }
             }
@@ -347,7 +390,7 @@ private fun HomeListeningRestoredReferenceFallback(
         val measuringContext = context.copy(interactive = false, measuring = true)
         fun forecastText(slot: String, preparing: Boolean) = subcompose(slot) {
             HomeListeningText(measuringContext, preparing, Modifier.fillMaxWidth(), palette = palette,
-                reference = reference, centered = stack)
+                reference = reference, centered = stack, marqueeBookName = true)
         }.single().measure(Constraints.fixedWidth(textWidth))
         // Keep both grace-period and preparing text budgets while preparation remains active.
         val textMinimum = if (forecasting) maxOf(forecastText("pending-text", true).height,
@@ -355,7 +398,7 @@ private fun HomeListeningRestoredReferenceFallback(
         val information = subcompose("information") {
             val metadata: @Composable (Modifier) -> Unit = { modifier ->
                 HomeListeningText(context, showPreparing, modifier.heightIn(min = textMinimum), palette = palette,
-                    reference = reference, interactive = true, centered = stack)
+                    reference = reference, interactive = true, centered = stack, marqueeBookName = true)
             }
             if (stack) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,

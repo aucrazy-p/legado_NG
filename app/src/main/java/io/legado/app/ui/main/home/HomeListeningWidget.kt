@@ -2,6 +2,7 @@ package io.legado.app.ui.main.home
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -175,6 +177,7 @@ internal fun HomeListeningMetadata(
     coverWidth: Dp? = null,
     textScale: Float = 1f,
     spacing: Dp = 6.dp,
+    marqueeBookName: Boolean = false,
 ) {
     val state = context.listening
     if (state.book == null) return
@@ -194,6 +197,7 @@ internal fun HomeListeningMetadata(
         HomeListeningText(
             context, showPreparing, textModifier, compact, palette,
             textScale = textScale, spacing = spacing, centered = stacked,
+            marqueeBookName = marqueeBookName,
         )
     }
     if (stacked) {
@@ -254,10 +258,12 @@ internal fun HomeListeningText(
     centered: Boolean = false,
     interactive: Boolean = false,
     reference: HomeListeningReference? = null,
+    showBookName: Boolean = true,
+    marqueeBookName: Boolean = false,
+    showChapterTitle: Boolean = true,
 ) {
     val state = context.listening
     if (state.book == null) return
-    val foreground = palette?.foreground ?: Color(NgTheme.colors.onSurface)
     val secondary = palette?.secondary ?: Color(NgTheme.colors.onSurfaceVariant)
     val primary = palette?.primary ?: Color(NgTheme.colors.primary)
     val openModifier = if (!interactive || context.editing || !context.interactive) Modifier else Modifier.combinedClickable(
@@ -269,23 +275,16 @@ internal fun HomeListeningText(
     )
     Column(modifier.then(openModifier), verticalArrangement = Arrangement.spacedBy(if (reference == null) spacing else 0.dp),
         horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start) {
-        Text(
-            state.bookName, color = foreground,
-            fontWeight = if (reference == null) FontWeight.SemiBold else FontWeight.Bold,
-            fontSize = reference?.bookSize?.sp ?: (if (compact) 15.sp else 17.sp) * textScale,
-            lineHeight = reference?.bookLine?.sp ?: (if (compact) 20.sp else 23.sp) * textScale,
-            maxLines = 2, overflow = TextOverflow.Ellipsis,
-            textAlign = if (centered) TextAlign.Center else TextAlign.Start,
-        )
-        if (reference != null) Spacer(Modifier.height(reference.chapterGap.dp))
-        Text(
-            state.chapterTitle.ifBlank { stringResource(R.string.home_listening_chapter_unavailable) },
-            color = secondary, fontSize = reference?.chapterSize?.sp ?: (if (compact) 12.sp else 13.sp) * textScale,
-            lineHeight = reference?.chapterLine?.sp ?: 18.sp * textScale,
-            maxLines = 2, overflow = TextOverflow.Ellipsis,
-            textAlign = if (centered) TextAlign.Center else TextAlign.Start,
-        )
-        if (reference != null) Spacer(Modifier.height(reference.statusGap.dp))
+        if (showBookName) {
+            HomeListeningBookName(context, compact = compact, palette = palette, textScale = textScale,
+                centered = centered, reference = reference, marquee = marqueeBookName)
+            if (reference != null) Spacer(Modifier.height(reference.chapterGap.dp))
+        }
+        if (showChapterTitle) {
+            HomeListeningChapterTitle(context, compact = compact, palette = palette, textScale = textScale,
+                centered = centered, reference = reference)
+            if (reference != null) Spacer(Modifier.height(reference.statusGap.dp))
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             val statusColor = if (state.playing || showPreparing) primary else secondary
             Icon(
@@ -306,6 +305,76 @@ internal fun HomeListeningText(
             )
         }
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun HomeListeningBookName(
+    context: HomeWidgetContentContext,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    palette: HomeListeningPalette? = null,
+    textScale: Float = 1f,
+    centered: Boolean = false,
+    interactive: Boolean = false,
+    reference: HomeListeningReference? = null,
+    marquee: Boolean = false,
+) {
+    val state = context.listening
+    val openModifier = if (!interactive || context.editing || !context.interactive) Modifier else Modifier.combinedClickable(
+        role = Role.Button,
+        onClickLabel = stringResource(R.string.home_listening_open_player),
+        onClick = { context.onListeningAction(state, HomeListeningAction.OPEN) },
+        onLongClickLabel = stringResource(R.string.home_edit),
+        onLongClick = context.onEdit,
+    )
+    val style = LocalTextStyle.current.copy(
+        fontWeight = if (reference == null) FontWeight.SemiBold else FontWeight.Bold,
+        fontSize = reference?.bookSize?.sp ?: (if (compact) 15.sp else 17.sp) * textScale,
+        lineHeight = reference?.bookLine?.sp ?: (if (compact) 20.sp else 23.sp) * textScale,
+        textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+    )
+    val marqueeModifier = if (marquee && context.interactive && !context.editing && !context.measuring) {
+        val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+        if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) Modifier.basicMarquee() else Modifier
+    } else Modifier
+    Text(
+        state.bookName, modifier = modifier.then(marqueeModifier).then(openModifier), style = style,
+        color = palette?.foreground ?: Color(NgTheme.colors.onSurface),
+        maxLines = if (marquee) 1 else 2, softWrap = !marquee,
+        overflow = if (marquee) TextOverflow.Clip else TextOverflow.Ellipsis,
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun HomeListeningChapterTitle(
+    context: HomeWidgetContentContext,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    palette: HomeListeningPalette? = null,
+    textScale: Float = 1f,
+    centered: Boolean = false,
+    interactive: Boolean = false,
+    reference: HomeListeningReference? = null,
+) {
+    val state = context.listening
+    val openModifier = if (!interactive || context.editing || !context.interactive) Modifier else Modifier.combinedClickable(
+        role = Role.Button,
+        onClickLabel = stringResource(R.string.home_listening_open_player),
+        onClick = { context.onListeningAction(state, HomeListeningAction.OPEN) },
+        onLongClickLabel = stringResource(R.string.home_edit),
+        onLongClick = context.onEdit,
+    )
+    Text(
+        state.chapterTitle.ifBlank { stringResource(R.string.home_listening_chapter_unavailable) },
+        modifier = modifier.then(openModifier),
+        color = palette?.secondary ?: Color(NgTheme.colors.onSurfaceVariant),
+        fontSize = reference?.chapterSize?.sp ?: (if (compact) 12.sp else 13.sp) * textScale,
+        lineHeight = reference?.chapterLine?.sp ?: 18.sp * textScale,
+        maxLines = 2, overflow = TextOverflow.Ellipsis,
+        textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+    )
 }
 
 @Composable
