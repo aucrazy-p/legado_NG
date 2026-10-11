@@ -4,6 +4,7 @@ import com.script.ScriptBindings
 import com.script.rhino.ReadOnlyJavaObject
 import com.script.rhino.RhinoScriptEngine
 import com.script.rhino.RhinoWrapFactory
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import org.junit.Assert.assertEquals
@@ -37,8 +38,26 @@ class NativeBookTest {
             "setReverseToc", "setPageAnim", "setReSegment", "setRemoveSameTitle", "setImageStyle",
             "setUseReplaceRule", "setDelTag", "setTtsEngine", "setSplitLongChapter", "setReadSimulating",
             "setStartDate", "setStartChapter", "setDailyChapters", "setOpenCredits", "setCloseCredits",
-            "setPlayMode", "setPlaySpeed", "setIndependentReadStyle",
+            "setPlayMode", "setPlaySpeed", "setIndependentReadStyle", "setCustomBookType",
         ), Book.ReadConfig::class.java.methods.filter { it.name.startsWith("set") }.map { it.name }.toSet())
+    }
+
+    @Test
+    fun customBookTypeIsReadableButCannotBeChangedByBookSource() {
+        val book = Book(name = "手动漫画类型")
+        book.config.customBookType = BookType.image
+        val result = RhinoScriptEngine.eval(
+            """
+                book.config.customBookType = 8;
+                book.config.setCustomBookType(8);
+                book.config["setCustomBookType(java.lang.Integer)"](8);
+                book.readConfig.setCustomBookType(null);
+                book.getReadConfig().setCustomBookType(32);
+                book.config.customBookType;
+            """.trimIndent(), ScriptBindings().apply { put("book", book) },
+        )
+        assertEquals(BookType.image, (result as Number).toInt())
+        assertEquals(BookType.image, book.config.customBookType)
     }
 
     @Test

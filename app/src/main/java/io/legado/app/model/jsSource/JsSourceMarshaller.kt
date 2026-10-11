@@ -10,6 +10,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.book.applyCustomBookType
 import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
 import io.legado.app.utils.GSON
@@ -86,6 +87,7 @@ object JsSourceMarshaller {
                 }
             }
         }
+        book.applyCustomBookType()
     }
 
     private fun mergeDownloadUrls(book: Book, value: JsonElement, source: BookSource) {

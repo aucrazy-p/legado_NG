@@ -64,6 +64,7 @@ internal data class BookInfoEditUiState(
     val name: String = "",
     val author: String = "",
     val typeIndex: Int = BOOK_TYPE_TEXT,
+    val typeSelected: Boolean = false,
     val coverUrl: String = "",
     val intro: String = "",
     val coverRevision: Int = 0,

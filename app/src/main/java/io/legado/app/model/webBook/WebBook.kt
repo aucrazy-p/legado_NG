@@ -7,8 +7,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.book.addType
-import io.legado.app.help.book.removeAllBookType
+import io.legado.app.help.book.applyCustomBookType
+import io.legado.app.help.book.updateTypeFromSource
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.source.getBookType
@@ -206,8 +206,7 @@ object WebBook {
         if (bookSource.isJsSource()) {
             return JsSourceBook.getBookInfoAwait(bookSource, book, canReName)
         }
-        book.removeAllBookType()
-        book.addType(bookSource.getBookType())
+        book.updateTypeFromSource(bookSource.getBookType())
         if (!book.infoHtml.isNullOrEmpty()) {
             BookInfo.analyzeBookInfo(
                 bookSource = bookSource,
@@ -260,6 +259,7 @@ object WebBook {
                 canReName = canReName
             )
         }
+        book.applyCustomBookType()
         return book
     }
 
@@ -317,8 +317,7 @@ object WebBook {
         if (bookSource.isJsSource()) {
             return JsSourceBook.getChapterListAwait(bookSource, book)
         }
-        book.removeAllBookType()
-        book.addType(bookSource.getBookType())
+        book.updateTypeFromSource(bookSource.getBookType())
         return kotlin.runCatching {
             if (runPerJs) {
                 runPreUpdateJs(bookSource, book, isFromBookInfo).getOrThrow()
@@ -375,6 +374,8 @@ object WebBook {
                     isFromBookInfo = isFromBookInfo
                 )
             }
+        }.onSuccess {
+            book.applyCustomBookType()
         }.onFailure {
             currentCoroutineContext().ensureActive()
         }

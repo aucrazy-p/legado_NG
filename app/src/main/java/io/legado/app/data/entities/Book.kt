@@ -15,6 +15,7 @@ import io.legado.app.constant.PageAnim
 import io.legado.app.data.appDb
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
+import io.legado.app.help.book.applyCustomBookType
 import io.legado.app.help.book.getFolderNameNoCache
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isImage
@@ -423,6 +424,7 @@ data class Book(
         newBook.customTag = customTag
         newBook.canUpdate = canUpdate
         newBook.readConfig = readConfig
+        newBook.applyCustomBookType()
         return newBook
     }
 
@@ -480,6 +482,8 @@ data class Book(
         var playSpeed: Float = 1.0f,     //音频播放速度
         @SerializedName("independentReadStyle")
         var independentReadStyle: String? = null,
+        @SerializedName("customBookType")
+        var customBookType: Int? = null,
     ) : Parcelable
 
     class Converters {

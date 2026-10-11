@@ -44,7 +44,9 @@ class NativeBook(scope: VarScope?, javaObject: Any, staticType: Class<*>?) :
     }
 
     companion object {
-        val readConfigFactory = ReadOnlyJavaObject.factory(setOf("setIndependentReadStyle"))
+        val readConfigFactory = ReadOnlyJavaObject.factory(
+            setOf("setIndependentReadStyle", "setCustomBookType")
+        )
 
         private val blockedMethods = setOf(
             "setUseReplaceRule",

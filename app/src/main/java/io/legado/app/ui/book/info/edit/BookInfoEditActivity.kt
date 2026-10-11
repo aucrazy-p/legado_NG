@@ -13,12 +13,10 @@ import io.legado.app.constant.BookType
 import io.legado.app.constant.Theme
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.addType
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
-import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isVideo
-import io.legado.app.help.book.removeType
+import io.legado.app.help.book.setBookTypeFromEditor
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.design.theme.NgAppTheme
 import io.legado.app.utils.FileUtils
@@ -74,7 +72,10 @@ class BookInfoEditActivity :
             BookInfoEditUiEvent.Save -> saveData()
             is BookInfoEditUiEvent.NameChange -> uiState = uiState.copy(name = event.value)
             is BookInfoEditUiEvent.AuthorChange -> uiState = uiState.copy(author = event.value)
-            is BookInfoEditUiEvent.TypeChange -> uiState = uiState.copy(typeIndex = event.index)
+            is BookInfoEditUiEvent.TypeChange -> uiState = uiState.copy(
+                typeIndex = event.index,
+                typeSelected = true,
+            )
             is BookInfoEditUiEvent.CoverUrlChange -> uiState = uiState.copy(coverUrl = event.value)
             is BookInfoEditUiEvent.IntroChange -> uiState = uiState.copy(intro = event.value)
             BookInfoEditUiEvent.SelectLocalCover -> selectCover.launch(null)
@@ -115,15 +116,13 @@ class BookInfoEditActivity :
         val oldBook = book.copy()
         book.name = uiState.name
         book.author = uiState.author
-        val local = if (book.isLocal) BookType.local else 0
         val bookType = when (uiState.typeIndex) {
-            BOOK_TYPE_VIDEO -> BookType.video or local
-            BOOK_TYPE_IMAGE -> BookType.image or local
-            BOOK_TYPE_AUDIO -> BookType.audio or local
-            else -> BookType.text or local
+            BOOK_TYPE_VIDEO -> BookType.video
+            BOOK_TYPE_IMAGE -> BookType.image
+            BOOK_TYPE_AUDIO -> BookType.audio
+            else -> BookType.text
         }
-        book.removeType(BookType.video, BookType.local, BookType.image, BookType.audio, BookType.text)
-        book.addType(bookType)
+        book.setBookTypeFromEditor(bookType, uiState.typeSelected)
         book.customCoverUrl = if (uiState.coverUrl == book.coverUrl) null else uiState.coverUrl
         book.customIntro = if (uiState.intro == book.intro) null else uiState.intro
         BookHelp.updateCacheFolder(oldBook, book)

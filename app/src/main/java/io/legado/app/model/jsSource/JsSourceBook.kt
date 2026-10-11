@@ -11,8 +11,9 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
+import io.legado.app.help.book.applyCustomBookType
 import io.legado.app.help.book.isWebFile
-import io.legado.app.help.book.removeAllBookType
+import io.legado.app.help.book.updateTypeFromSource
 import io.legado.app.help.source.getBookType
 import io.legado.app.model.Debug
 import io.legado.app.model.webBook.BookChapterList
@@ -61,8 +62,7 @@ object JsSourceBook {
         book: Book,
         canReName: Boolean,
     ): Book {
-        book.removeAllBookType()
-        book.addType(source.getBookType())
+        book.updateTypeFromSource(source.getBookType())
         val json = JsSourceEngine(source, coroutineContext).callFunctionIfExists(
             "getBookInfo",
             listOf("book" to book),
@@ -77,6 +77,7 @@ object JsSourceBook {
         if (source.bookSourceType == BookSourceType.file) {
             book.addType(source.getBookType())
         }
+        book.applyCustomBookType()
         if (!book.isWebFile && book.tocUrl.isBlank()) book.tocUrl = book.bookUrl
         logSummary(source.bookSourceUrl) { JsSourceDebugFormatter.bookInfo(book) }
         if (book.isWebFile && book.downloadUrls.isNullOrEmpty()) {
@@ -89,8 +90,7 @@ object JsSourceBook {
         source: BookSource,
         book: Book,
     ): Result<List<BookChapter>> {
-        book.removeAllBookType()
-        book.addType(source.getBookType())
+        book.updateTypeFromSource(source.getBookType())
         val context = coroutineContext
         return runCatching {
             val json = JsSourceEngine(source, context).callFunction(
@@ -106,6 +106,8 @@ object JsSourceBook {
             BookChapterList.updateBookTocInfo(book, chapters)
             Debug.log(source.bookSourceUrl, "◇JS源目录完成，共${chapters.size}章")
             chapters
+        }.onSuccess {
+            book.applyCustomBookType()
         }.onFailure {
             context.ensureActive()
         }

@@ -259,6 +259,7 @@ fun Book.sync(oldBook: Book) {
     }
     canUpdate = curBook.canUpdate
     readConfig = curBook.readConfig
+    applyCustomBookType()
 }
 
 fun Book.update() {
@@ -281,6 +282,7 @@ fun Book.updateTo(newBook: Book): Book {
     newBook.customTag = customTag
     newBook.canUpdate = canUpdate
     newBook.readConfig = readConfig
+    newBook.applyCustomBookType()
     val variableMap = variableMap.toMutableMap()
     variableMap.keys.removeIf {
         newBook.hasVariable(it)
