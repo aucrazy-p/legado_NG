@@ -636,6 +636,10 @@ private fun ReadCatalogPanel(
         bookmarkColorFilter = null
         query = ""
     }
+    val onAutoExpandNotesChanged: (Boolean) -> Unit = {
+        autoExpandNotes = it
+        AppConfig.bookmarkAutoExpandNotes = it
+    }
     val collapseTools: () -> Unit = {
         toolsExpanded = false
         focusManager.clearFocus()
@@ -658,12 +662,11 @@ private fun ReadCatalogPanel(
             },
             onClearConditions = clearBookmarkConditions,
             autoExpandNotes = autoExpandNotes,
-            onAutoExpandNotesChanged = { autoExpandNotes = it; AppConfig.bookmarkAutoExpandNotes = it },
-            extraActions = {
-                if (visualStyle == CatalogDrawerVisualStyle.READING_COMPACT_SIDE) {
-                    CatalogToolAction(stringResource(R.string.read_catalog_refresh),
-                        R.drawable.ic_refresh_black_24dp, refreshing, onClick = onRefresh)
-                }
+            onAutoExpandNotesChanged = onAutoExpandNotesChanged,
+            variant = when (visualStyle) {
+                CatalogDrawerVisualStyle.READING_ORIGINAL -> CatalogBookmarkToolsVariant.READING_BOTTOM
+                CatalogDrawerVisualStyle.READING_COMPACT_SIDE -> CatalogBookmarkToolsVariant.READING_COMPACT_SIDE
+                CatalogDrawerVisualStyle.LISTENING -> CatalogBookmarkToolsVariant.STANDARD
             },
             modifier = Modifier.padding(horizontal = 16.dp),
         )
@@ -721,7 +724,8 @@ private fun ReadCatalogPanel(
             if (visualStyle != CatalogDrawerVisualStyle.LISTENING) {
                 FlowRow(Modifier.fillMaxWidth().padding(top = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp), maxItemsInEachRow = 3) {
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    maxItemsInEachRow = if (volumeIds.isNotEmpty()) 2 else 3) {
                     CatalogToolSwitch(stringResource(R.string.load_word_count), showWordCount,
                         modifier = Modifier.weight(1f).widthIn(min = 96.dp)) {
                         showWordCount = it; AppConfig.tocCountWords = it
@@ -737,6 +741,7 @@ private fun ReadCatalogPanel(
                         CatalogToolAction(stringResource(if (allVolumesCollapsed) R.string.read_catalog_expand_volume
                             else R.string.read_catalog_collapse_volume),
                             if (allVolumesCollapsed) R.drawable.ic_expand_more else R.drawable.ic_expand_less,
+                            modifier = Modifier.weight(1f),
                             onClick = toggleAllVolumes)
                     }
                 }
@@ -785,10 +790,17 @@ private fun ReadCatalogPanel(
                         if (toolsExpanded) {
                             if (selectedTab == CatalogTab.Bookmarks) bookmarkToolsPanel() else chapterToolsPanel()
                         }
-                        if (selectedTab == CatalogTab.Bookmarks || query.isNotBlank()) {
-                            Text(stringResource(if (selectedTab == CatalogTab.Bookmarks) R.string.read_catalog_bookmark_count
-                                else R.string.read_catalog_search_chapter_count,
-                                if (selectedTab == CatalogTab.Bookmarks) filteredBookmarks.size else visibleChapterCount),
+                        if (selectedTab == CatalogTab.Bookmarks) {
+                            CatalogBookmarkSummaryRow(
+                                itemCount = filteredBookmarks.size,
+                                mutedColor = mutedColor,
+                                showAutoExpand = toolsExpanded,
+                                autoExpandNotes = autoExpandNotes,
+                                onAutoExpandNotesChanged = onAutoExpandNotesChanged,
+                                compact = true,
+                            )
+                        } else if (query.isNotBlank()) {
+                            Text(stringResource(R.string.read_catalog_search_chapter_count, visibleChapterCount),
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
                                 color = mutedColor, fontSize = 11.sp)
                         }
@@ -885,10 +897,6 @@ private fun ReadCatalogPanel(
         ) {
             if (visualStyle == CatalogDrawerVisualStyle.READING_ORIGINAL) {
                 CatalogDragHandle(mutedColor = mutedColor)
-                Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    CatalogToolsButton(toolsActive, contentColor, accentColor, onToolsAction)
-                }
             } else {
                 NgLongDrawerHeader(
                     title = stringResource(R.string.chapter_list),
@@ -908,20 +916,33 @@ private fun ReadCatalogPanel(
             }
             if (tabs.size > 1) {
                 Spacer(Modifier.height(4.dp))
-                CatalogTabDock(
-                    tabs = tabs,
-                    selectedTab = selectedTab,
-                    contentColor = contentColor,
-                    accentColor = accentColor,
-                    selectedContentColor = selectedContentColor,
-                    dockColor = dockColor,
-                    onTabSelected = {
-                        query = ""
-                        pagerScope.launch {
-                            pagerState.animateScrollToPage(tabs.indexOf(it).coerceAtLeast(0))
-                        }
-                    },
-                )
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    CatalogTabDock(
+                        tabs = tabs,
+                        selectedTab = selectedTab,
+                        contentColor = contentColor,
+                        accentColor = accentColor,
+                        selectedContentColor = selectedContentColor,
+                        dockColor = dockColor,
+                        onTabSelected = {
+                            query = ""
+                            pagerScope.launch {
+                                pagerState.animateScrollToPage(tabs.indexOf(it).coerceAtLeast(0))
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (visualStyle == CatalogDrawerVisualStyle.READING_ORIGINAL) {
+                        Spacer(Modifier.width(8.dp))
+                        CatalogToolsButton(toolsActive, contentColor, accentColor, onToolsAction)
+                    }
+                }
+            } else if (visualStyle == CatalogDrawerVisualStyle.READING_ORIGINAL) {
+                Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    CatalogToolsButton(toolsActive, contentColor, accentColor, onToolsAction)
+                }
             }
             Spacer(Modifier.height(4.dp))
             HorizontalPager(
@@ -937,20 +958,31 @@ private fun ReadCatalogPanel(
                     if (toolsExpanded) {
                         if (pageTab == CatalogTab.Bookmarks) bookmarkToolsPanel() else chapterToolsPanel()
                     }
-                    CatalogSummaryRow(
-                        selectedTab = pageTab,
-                        currentChapterIndex = currentChapterIndex,
-                        chapterCount = chapterCount,
-                        itemCount = if (pageTab == CatalogTab.Chapters) {
-                            visibleChapterCount
-                        } else {
-                            filteredBookmarks.size
-                        },
-                        descending = descending,
-                        contentColor = contentColor,
-                        mutedColor = mutedColor,
-                        onSort = { descending = !descending },
-                    )
+                    if (pageTab == CatalogTab.Bookmarks &&
+                        visualStyle == CatalogDrawerVisualStyle.READING_ORIGINAL) {
+                        CatalogBookmarkSummaryRow(
+                            itemCount = filteredBookmarks.size,
+                            mutedColor = mutedColor,
+                            showAutoExpand = toolsExpanded,
+                            autoExpandNotes = autoExpandNotes,
+                            onAutoExpandNotesChanged = onAutoExpandNotesChanged,
+                        )
+                    } else {
+                        CatalogSummaryRow(
+                            selectedTab = pageTab,
+                            currentChapterIndex = currentChapterIndex,
+                            chapterCount = chapterCount,
+                            itemCount = if (pageTab == CatalogTab.Chapters) {
+                                visibleChapterCount
+                            } else {
+                                filteredBookmarks.size
+                            },
+                            descending = descending,
+                            contentColor = contentColor,
+                            mutedColor = mutedColor,
+                            onSort = { descending = !descending },
+                        )
+                    }
                     if (loading) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(
@@ -1142,15 +1174,15 @@ private fun CatalogTabDock(
     selectedContentColor: Color,
     dockColor: Color,
     onTabSelected: (CatalogTab) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val selectedShape = RoundedCornerShape(10.dp)
     val selectedShadowColor = Color.Black.copy(
         alpha = if (NgTheme.snapshot.isDark) 0.32f else 0.16f
     )
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
             .height(40.dp)
             .clip(RoundedCornerShape(13.dp))
             .background(dockColor),
@@ -1192,6 +1224,34 @@ private fun CatalogTabDock(
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CatalogBookmarkSummaryRow(
+    itemCount: Int,
+    mutedColor: Color,
+    showAutoExpand: Boolean,
+    autoExpandNotes: Boolean,
+    onAutoExpandNotesChanged: (Boolean) -> Unit,
+    compact: Boolean = false,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().then(when {
+            showAutoExpand -> Modifier.heightIn(min = 44.dp)
+            compact -> Modifier.padding(vertical = 6.dp)
+            else -> Modifier.height(28.dp)
+        }).padding(horizontal = if (compact) 18.dp else 24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(stringResource(R.string.read_catalog_bookmark_count, itemCount),
+            modifier = Modifier.weight(1f), color = mutedColor,
+            fontSize = if (compact) 11.sp else 13.sp)
+        if (showAutoExpand) {
+            Spacer(Modifier.width(8.dp))
+            CatalogToolSwitch(stringResource(R.string.bookmark_auto_expand_notes), autoExpandNotes,
+                compact = true, indicatorShape = CircleShape, onCheckedChange = onAutoExpandNotesChanged)
         }
     }
 }

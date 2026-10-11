@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalFocusManager
@@ -53,6 +54,8 @@ import io.legado.app.R
 import io.legado.app.ui.design.components.compose.ngDrawerContentCardColor
 import io.legado.app.ui.design.theme.NgTheme
 
+internal enum class CatalogToolsPanelVariant { STANDARD, BOOKMARK_INTEGRATED }
+
 /** Shared inline search shell for chapter tools and bookmark filters. */
 @Composable
 internal fun CatalogToolsPanel(
@@ -60,6 +63,7 @@ internal fun CatalogToolsPanel(
     hint: String,
     onQueryChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    variant: CatalogToolsPanelVariant = CatalogToolsPanelVariant.STANDARD,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val primary = Color(NgTheme.colors.primary)
@@ -67,11 +71,20 @@ internal fun CatalogToolsPanel(
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     var focused by remember { mutableStateOf(false) }
-    val fieldShape = RoundedCornerShape(13.dp)
-    Column(modifier.fillMaxWidth().padding(top = 6.dp, bottom = 8.dp)) {
-        Row(Modifier.fillMaxWidth().height(44.dp).clip(fieldShape)
-            .background(ngDrawerContentCardColor())
-            .then(if (focused) Modifier.border(1.dp, primary.copy(alpha = 0.5f), fieldShape) else Modifier)
+    val integrated = variant == CatalogToolsPanelVariant.BOOKMARK_INTEGRATED
+    val fieldShape = RoundedCornerShape(if (integrated) 8.dp else 13.dp)
+    val textSize = if (integrated) 13.sp else 14.sp
+    Column(modifier.fillMaxWidth().padding(top = 6.dp, bottom = 8.dp)
+        .then(if (integrated) Modifier.clip(RoundedCornerShape(14.dp))
+            .background(ngDrawerContentCardColor()).padding(horizontal = 8.dp, vertical = 6.dp)
+        else Modifier)) {
+        Row(Modifier.fillMaxWidth().height(if (integrated) 40.dp else 44.dp).clip(fieldShape)
+            .background(if (integrated) Color.Transparent else ngDrawerContentCardColor())
+            .then(when {
+                focused -> Modifier.border(1.dp, primary.copy(alpha = 0.5f), fieldShape)
+                integrated -> Modifier.border(0.5.dp, muted.copy(alpha = 0.15f), fieldShape)
+                else -> Modifier
+            })
             .padding(start = 12.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Icon(painterResource(R.drawable.ic_search), null, Modifier.size(18.dp), tint = primary)
@@ -80,12 +93,12 @@ internal fun CatalogToolsPanel(
                 modifier = Modifier.weight(1f).onFocusChanged { focused = it.isFocused },
                 singleLine = true,
                 textStyle = TextStyle(fontFamily = NgTheme.fontFamily,
-                    color = Color(NgTheme.colors.onSurface), fontSize = 14.sp),
+                    color = Color(NgTheme.colors.onSurface), fontSize = textSize),
                 cursorBrush = SolidColor(primary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus(); keyboard?.hide() }),
                 decorationBox = { inner ->
-                    if (query.isEmpty() && !focused) Text(hint, color = muted.copy(alpha = 0.72f), fontSize = 14.sp)
+                    if (query.isEmpty() && !focused) Text(hint, color = muted.copy(alpha = 0.72f), fontSize = textSize)
                     inner()
                 })
             if (query.isNotEmpty()) {
@@ -105,11 +118,11 @@ internal fun CatalogToolSwitch(
     checked: Boolean,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    indicatorShape: Shape = if (compact) RoundedCornerShape(4.dp) else CircleShape,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val primary = Color(NgTheme.colors.primary)
     val muted = Color(NgTheme.colors.onSurfaceVariant)
-    val shape = if (compact) RoundedCornerShape(4.dp) else CircleShape
     val background = if (compact) Color.Transparent else ngDrawerContentCardColor()
         .copy(alpha = if (checked) 0.78f else 0.4f)
     Row(modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(10.dp))
@@ -118,9 +131,9 @@ internal fun CatalogToolSwitch(
         .padding(horizontal = if (compact) 4.dp else 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(16.dp).clip(shape)
+        Box(Modifier.size(16.dp).clip(indicatorShape)
             .background(if (checked) primary else Color.Transparent)
-            .border(1.dp, if (checked) primary else muted.copy(alpha = 0.45f), shape),
+            .border(1.dp, if (checked) primary else muted.copy(alpha = 0.45f), indicatorShape),
             contentAlignment = Alignment.Center) {
             if (checked) Icon(painterResource(R.drawable.ic_check), null, Modifier.size(11.dp),
                 tint = Color(NgTheme.colors.onPrimary))
