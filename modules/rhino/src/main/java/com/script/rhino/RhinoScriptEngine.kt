@@ -12,6 +12,7 @@ import org.htmlunit.corejs.javascript.Context
 import org.htmlunit.corejs.javascript.ContextFactory
 import org.htmlunit.corejs.javascript.ContinuationPending
 import org.htmlunit.corejs.javascript.JavaScriptException
+import org.htmlunit.corejs.javascript.NestedScriptScope
 import org.htmlunit.corejs.javascript.RhinoException
 import org.htmlunit.corejs.javascript.Script
 import org.htmlunit.corejs.javascript.Scriptable
@@ -69,6 +70,7 @@ object RhinoScriptEngine {
     ): Any? {
         val cx = Context.enter() as RhinoContext
         val previousCoroutineContext = cx.coroutineContext
+        val previousAllowScriptRun = cx.allowScriptRun
         if (coroutineContext != null && coroutineContext[Job] != null) {
             cx.coroutineContext = coroutineContext
         }
@@ -82,14 +84,16 @@ object RhinoScriptEngine {
             source = reader.readText()
             sourceName = registerSource(source)
             val script = cx.compileWithCompatibility(source, sourceName, 1, scope)
-            ret = script.exec(cx, scope, topLevelThis(scope))
+            ret = NestedScriptScope.enter(cx, scope).use {
+                script.exec(cx, scope, topLevelThis(scope))
+            }
         } catch (re: RhinoException) {
             throw createScriptException(re, source, sourceName)
         } catch (var14: IOException) {
             throw ScriptException(var14)
         } finally {
             cx.coroutineContext = previousCoroutineContext
-            cx.allowScriptRun = false
+            cx.allowScriptRun = previousAllowScriptRun
             cx.recursiveCount--
             Context.exit()
         }
@@ -107,6 +111,7 @@ object RhinoScriptEngine {
         Context.exit()
         var ret: Any?
         withContext(RhinoContextElement(cx)) {
+            val previousAllowScriptRun = cx.allowScriptRun
             cx.allowScriptRun = true
             cx.recursiveCount++
             var source = ""
@@ -117,7 +122,9 @@ object RhinoScriptEngine {
                 sourceName = registerSource(source)
                 val script = cx.compileWithCompatibility(source, sourceName, 1, scope)
                 try {
-                    ret = cx.executeScriptWithContinuations(script, scope)
+                    ret = NestedScriptScope.enter(cx, scope).use {
+                        cx.executeScriptWithContinuations(script, scope)
+                    }
                 } catch (e: ContinuationPending) {
                     var pending = e
                     while (true) {
@@ -125,7 +132,10 @@ object RhinoScriptEngine {
                             @Suppress("UNCHECKED_CAST")
                             val suspendFunction = pending.applicationState as suspend () -> Any?
                             val continuation = pending.continuation
-                            ret = cx.resumeContinuation(continuation, scope, suspendFunction())
+                            val functionResult = suspendFunction()
+                            ret = NestedScriptScope.enter(cx, scope).use {
+                                cx.resumeContinuation(continuation, scope, functionResult)
+                            }
                             break
                         } catch (e: ContinuationPending) {
                             pending = e
@@ -137,7 +147,7 @@ object RhinoScriptEngine {
             } catch (var14: IOException) {
                 throw ScriptException(var14)
             } finally {
-                cx.allowScriptRun = false
+                cx.allowScriptRun = previousAllowScriptRun
                 cx.recursiveCount--
             }
         }

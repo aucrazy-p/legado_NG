@@ -112,6 +112,7 @@ object RhinoClassShutter : ClassShutter {
             "cn.hutool.core.util.SerializeUtil",
             "cn.hutool.core.util.ClassUtil",
             "org.htmlunit.corejs.javascript.DefiningClassLoader",
+            "org.htmlunit.corejs.javascript.NestedScriptScope",
             "io.legado.app.data.AppDatabase",
             "io.legado.app.data.AppDatabase_Impl",
             "io.legado.app.data.AppDatabaseKt",

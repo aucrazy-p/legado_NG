@@ -6,6 +6,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import org.htmlunit.corejs.javascript.Context
 import org.htmlunit.corejs.javascript.ContinuationPending
+import org.htmlunit.corejs.javascript.NestedScriptScope
 import org.htmlunit.corejs.javascript.RhinoException
 import org.htmlunit.corejs.javascript.Script
 import org.htmlunit.corejs.javascript.VarScope
@@ -21,6 +22,7 @@ internal class RhinoCompiledScript(
     override fun eval(scope: VarScope, coroutineContext: CoroutineContext?): Any? {
         val cx = Context.enter() as RhinoContext
         val previousCoroutineContext = cx.coroutineContext
+        val previousAllowScriptRun = cx.allowScriptRun
         if (coroutineContext != null && coroutineContext[Job] != null) {
             cx.coroutineContext = coroutineContext
         }
@@ -29,13 +31,15 @@ internal class RhinoCompiledScript(
         val result: Any?
         try {
             cx.checkRecursive()
-            val ret = script.exec(cx, scope, RhinoScriptEngine.topLevelThis(scope))
+            val ret = NestedScriptScope.enter(cx, scope).use {
+                script.exec(cx, scope, RhinoScriptEngine.topLevelThis(scope))
+            }
             result = RhinoScriptEngine.unwrapReturnValue(ret)
         } catch (re: RhinoException) {
             throw RhinoScriptEngine.createScriptException(re, source, sourceName)
         } finally {
             cx.coroutineContext = previousCoroutineContext
-            cx.allowScriptRun = false
+            cx.allowScriptRun = previousAllowScriptRun
             cx.recursiveCount--
             Context.exit()
         }
@@ -47,12 +51,15 @@ internal class RhinoCompiledScript(
         Context.exit()
         var ret: Any?
         withContext(RhinoContextElement(cx)) {
+            val previousAllowScriptRun = cx.allowScriptRun
             cx.allowScriptRun = true
             cx.recursiveCount++
             try {
                 cx.checkRecursive()
                 try {
-                    ret = cx.executeScriptWithContinuations(script, scope)
+                    ret = NestedScriptScope.enter(cx, scope).use {
+                        cx.executeScriptWithContinuations(script, scope)
+                    }
                 } catch (e: ContinuationPending) {
                     var pending = e
                     while (true) {
@@ -61,7 +68,9 @@ internal class RhinoCompiledScript(
                             val suspendFunction = pending.applicationState as suspend () -> Any?
                             val functionResult = suspendFunction()
                             val continuation = pending.continuation
-                            ret = cx.resumeContinuation(continuation, scope, functionResult)
+                            ret = NestedScriptScope.enter(cx, scope).use {
+                                cx.resumeContinuation(continuation, scope, functionResult)
+                            }
                             break
                         } catch (e: ContinuationPending) {
                             pending = e
@@ -73,7 +82,7 @@ internal class RhinoCompiledScript(
             } catch (var14: IOException) {
                 throw ScriptException(var14)
             } finally {
-                cx.allowScriptRun = false
+                cx.allowScriptRun = previousAllowScriptRun
                 cx.recursiveCount--
             }
         }
