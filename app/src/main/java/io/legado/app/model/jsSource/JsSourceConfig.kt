@@ -2,6 +2,7 @@ package io.legado.app.model.jsSource
 
 import com.google.gson.JsonObject
 import com.script.ScriptBindings
+import com.script.buildScriptBindings
 import com.script.rhino.RhinoClassShutter
 import com.script.rhino.RhinoScriptEngine
 import io.legado.app.constant.BookSourceType
@@ -42,13 +43,17 @@ object JsSourceConfig {
         "ruleReview",
     )
 
-    fun extract(text: String, coroutineContext: CoroutineContext? = null): BookSource {
+    fun extract(
+        text: String,
+        coroutineContext: CoroutineContext? = null,
+        externalJsLib: String? = null,
+    ): BookSource {
         try {
             return RhinoClassShutter.withBookSourceClassPolicy(
                 enabled = true,
                 sourceLabel = "JS书源导入",
             ) {
-                extractInternal(text, coroutineContext)
+                extractInternal(text, coroutineContext, externalJsLib)
             }
         } catch (error: CancellationException) {
             throw error
@@ -58,8 +63,11 @@ object JsSourceConfig {
     private fun extractInternal(
         text: String,
         coroutineContext: CoroutineContext?,
+        externalJsLib: String?,
     ): BookSource {
-        val scope = RhinoScriptEngine.getRuntimeScope(ScriptBindings())
+        val scope = RhinoScriptEngine.getRuntimeScope(buildScriptBindings { values ->
+            values[JsSourceLibraryReference.SUPPORT_BINDING] = JsSourceLibraryReference.VERSION
+        })
         SharedJsScope.installCryptoJs(scope, coroutineContext)
         try {
             RhinoScriptEngine.eval(text, scope, coroutineContext)
@@ -74,6 +82,14 @@ object JsSourceConfig {
         val jsonObject = runCatching { GSON.fromJson(json, JsonObject::class.java) }.getOrNull()
             ?: throw NoStackTraceException("$configName 配置对象不是合法对象")
         strippedKeys.forEach(jsonObject::remove)
+        jsonObject.get("jsLib")?.takeIf {
+            it.isJsonPrimitive && it.asJsonPrimitive.isString
+        }?.let { library ->
+            jsonObject.addProperty(
+                "jsLib",
+                JsSourceLibraryReference.resolve(library.asString, externalJsLib),
+            )
+        }
         normalizeExploreUrl(jsonObject)
         normalizeLoginUi(jsonObject)
         val source = runCatching { GSON.fromJson(jsonObject, BookSource::class.java) }.getOrNull()

@@ -47,17 +47,17 @@ object JsSourceUpsert {
         }
         return withSaveLock(timeoutMillis) {
             withContext(IO) {
-                val source = if (timeoutMillis == null) {
-                    JsSourceConfig.extract(text, currentCoroutineContext())
-                } else {
-                    withTimeout(timeoutMillis) {
-                        JsSourceConfig.extract(text, currentCoroutineContext())
-                    }
-                }
                 val oldUrl = openedSourceUrl?.takeIf(String::isNotBlank)
                 val openedSource = oldUrl?.let(appDb.bookSourceDao::getBookSource)
                 if (oldUrl != null && openedSource == null) {
                     throw IllegalArgumentException("原书源已不存在，请重新打开后保存")
+                }
+                val source = if (timeoutMillis == null) {
+                    JsSourceConfig.extract(text, currentCoroutineContext(), openedSource?.jsLib)
+                } else {
+                    withTimeout(timeoutMillis) {
+                        JsSourceConfig.extract(text, currentCoroutineContext(), openedSource?.jsLib)
+                    }
                 }
                 val targetSource = appDb.bookSourceDao.getBookSource(source.bookSourceUrl)
                 if (hasTargetConflict(openedSource, targetSource, source.bookSourceUrl)) {

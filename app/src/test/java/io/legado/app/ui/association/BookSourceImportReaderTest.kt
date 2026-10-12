@@ -75,6 +75,27 @@ class BookSourceImportReaderTest {
     }
 
     @Test
+    fun jsonOwnedLibrarySurvivesImportThenMainScriptEditing() = runBlocking {
+        val library = """{"format":"legado.js.library/1","scripts":["var LibraryModel = {version: 6};"],"resources":{"font-model":"字形库原始数据"},"builtins":[]}"""
+        val script = """
+            var config = {bookSourceUrl: "external-library", bookSourceName: "外置库测试", jsLib: "legado.js.library.ref/1:c1cc93e4f1303636e8f7b388b3445c087b31ba7efbf727608e2e20f0af8a8e52"};
+            function search(key, page) { return []; }
+            function getChapters(book) { return []; }
+            function getContent(chapter, book) { return "正文"; }
+        """.trimIndent()
+        val original = BookSource(bookSourceUrl = "external-library", mainJs = script, jsLib = library)
+        for (input in listOf(GSON.toJson(original), "[${GSON.toJson(original)}]")) {
+            var imported: BookSource? = null
+            readBookSourceImport(input.reader(), false, { imported = it }, { error("No links") })
+            assertEquals(library, imported!!.jsLib)
+            val edited = io.legado.app.model.jsSource.JsSourceConfig.extract(
+                imported!!.mainJs!!.replace("正文", "编辑正文"), externalJsLib = imported!!.jsLib,
+            )
+            assertEquals(library, edited.jsLib)
+        }
+    }
+
+    @Test
     fun linkWrapperIsOnlyExpandedForAllowedEntry() = runBlocking {
         val links = arrayListOf<String>()
         readBookSourceImport("""{"sourceUrls":["https://a","https://b"]}""".reader(), true,

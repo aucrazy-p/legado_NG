@@ -104,4 +104,30 @@ class JsSourceConfigTest {
         assertTrue(stamped!!.contains("lastUpdateTime: 1234"))
         assertTrue(stamped.contains("page)"))
     }
+
+    @Test
+    fun unchangedAndEditedMainScriptsKeepTheReferencedLibrary() {
+        val library = """{"format":"legado.js.library/1","scripts":["var LibraryModel = {version: 6};"],"resources":{"font-model":"字形库原始数据"},"builtins":[]}"""
+        val script = validScript + "\nconfig.jsLib = \"legado.js.library.ref/1:c1cc93e4f1303636e8f7b388b3445c087b31ba7efbf727608e2e20f0af8a8e52\";"
+        for (text in listOf(script, script.replace("正文", "修改后正文"))) {
+            val source = JsSourceConfig.extract(text, externalJsLib = library)
+            assertEquals(library, source.jsLib)
+            assertEquals(text, source.mainJs)
+        }
+    }
+
+    @Test
+    fun referencedLibraryCannotBeSilentlyImportedWithoutItsJsonResources() {
+        val script = validScript + "\nconfig.jsLib = \"legado.js.library.ref/1:c1cc93e4f1303636e8f7b388b3445c087b31ba7efbf727608e2e20f0af8a8e52\";"
+        assertThrows(NoStackTraceException::class.java) { JsSourceConfig.extract(script) }
+        assertThrows(NoStackTraceException::class.java) {
+            JsSourceConfig.extract(script, externalJsLib = "wrong library")
+        }
+    }
+
+    @Test
+    fun editedInlineLibraryStillOverridesTheExistingExternalLibrary() {
+        val script = validScript + "\nconfig.jsLib = 'var Replacement = 1;';"
+        assertEquals("var Replacement = 1;", JsSourceConfig.extract(script, externalJsLib = "existing").jsLib)
+    }
 }
