@@ -282,6 +282,7 @@
     <string name="book_source_groups">书源分组</string>
     <string name="book_source">书源</string>
     <string name="export_book_source">导出书源</string>
+    <string name="export_rss_source">导出订阅源</string>
     <string name="export_book_source_share_apps">分享到其他应用</string>
     <string name="export_book_source_save_folder">保存到本地文件夹</string>
     <string name="export_book_source_upload_link">上传并生成链接</string>

@@ -13,6 +13,8 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.RssSource
 import io.legado.app.ui.association.ImportRssSourceDialog
+import io.legado.app.ui.book.manage.BookSourceExportSheet
+import io.legado.app.ui.book.manage.BookSourceUploadDialog
 import io.legado.app.ui.design.theme.NgAppTheme
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.rss.RssComposeBinding
@@ -22,13 +24,13 @@ import io.legado.app.utils.CreateFileContract
 import io.legado.app.utils.SelectFileContract
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.launch
-import io.legado.app.utils.sendToClip
 import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.takePersistableReadPermission
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -62,7 +64,6 @@ class RssSourceActivity :
     private var selectedUrls by mutableStateOf<Set<String>>(emptySet())
     private var inputRequest by mutableStateOf<SourceInputRequest?>(null)
     private var deleteRequest by mutableStateOf<SourceDeleteRequest?>(null)
-    private var exportedPath by mutableStateOf<String?>(null)
     private var sourceFlowJob: Job? = null
 
     private val qrCodeResult = registerForActivityResult(QrCodeResult()) {
@@ -76,7 +77,7 @@ class RssSourceActivity :
         }
     }
     private val exportResult = registerForActivityResult(CreateFileContract()) {
-        it.save(this, this) { uri -> exportedPath = uri.toString() }
+        it.save(this, this) { toastOnUi(R.string.export_success) }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
@@ -136,17 +137,6 @@ class RssSourceActivity :
                         }
                     )
                 }
-                exportedPath?.let { path ->
-                    RssSourceTextDialog(
-                        title = getString(R.string.export_success),
-                        initialValue = path,
-                        onDismiss = { exportedPath = null },
-                        onConfirm = {
-                            sendToClip(it)
-                            exportedPath = null
-                        }
-                    )
-                }
             }
         }
         lifecycleScope.launch {
@@ -181,12 +171,7 @@ class RssSourceActivity :
             }
             RssSourceManageAction.TopSelection -> viewModel.topSource(*selection.toTypedArray())
             RssSourceManageAction.BottomSelection -> viewModel.bottomSource(*selection.toTypedArray())
-            RssSourceManageAction.ExportSelection -> viewModel.saveToFile(selection) { file, name ->
-                exportResult.launch(CreateFileContract.FileData(name, file, "application/json"))
-            }
-            RssSourceManageAction.ShareSelection -> viewModel.saveToFile(selection) { file, _ ->
-                share(file)
-            }
+            RssSourceManageAction.ExportOrShareSelection -> showExportSheet(selection)
             RssSourceManageAction.CompleteSelectionInterval -> completeSelectionInterval()
             RssSourceManageAction.SelectAll -> {
                 selectedUrls = sources.mapTo(linkedSetOf(), RssSource::sourceUrl)
@@ -229,6 +214,27 @@ class RssSourceActivity :
                 viewModel.update(*reordered.toTypedArray())
             }
         }
+    }
+
+    private fun showExportSheet(selection: List<RssSource>) {
+        if (selection.isEmpty()) return
+        BookSourceExportSheet(
+            context = this,
+            titleRes = R.string.export_rss_source,
+            onShare = {
+                viewModel.saveToFile(selection) { file, _ -> share(file) }
+            },
+            onSaveLocally = {
+                viewModel.saveToFile(selection) { file, name ->
+                    exportResult.launch(CreateFileContract.FileData(name, file, "application/json"))
+                }
+            },
+            onUpload = {
+                viewModel.saveToFile(selection) { file, name ->
+                    showDialogFragment(BookSourceUploadDialog.create(file, name))
+                }
+            },
+        ).show()
     }
 
     private fun updateSourceFlow(searchKey: String? = query) {

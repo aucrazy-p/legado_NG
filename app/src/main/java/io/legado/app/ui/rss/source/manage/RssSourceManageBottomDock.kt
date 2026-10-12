@@ -151,13 +151,8 @@ private fun rssSourceDockMoreItems(): List<NgExpandableActionMenuItem> = listOf(
     ),
     NgExpandableActionMenuItem(
         itemId = R.id.menu_export_selection,
-        titleRes = R.string.export_selection,
+        titleRes = R.string.book_source_export_share,
         iconRes = R.drawable.ic_export
-    ),
-    NgExpandableActionMenuItem(
-        itemId = R.id.menu_share_source,
-        titleRes = R.string.share_selected_source,
-        iconRes = R.drawable.ic_share
     ),
     NgExpandableActionMenuItem(
         itemId = R.id.menu_check_selected_interval,
@@ -181,8 +176,7 @@ private fun NgExpandableActionMenuItem.toManageAction(): RssSourceManageAction {
         R.id.menu_remove_group -> RssSourceManageAction.RemoveSelectionFromGroup
         R.id.menu_top_sel -> RssSourceManageAction.TopSelection
         R.id.menu_bottom_sel -> RssSourceManageAction.BottomSelection
-        R.id.menu_export_selection -> RssSourceManageAction.ExportSelection
-        R.id.menu_share_source -> RssSourceManageAction.ShareSelection
+        R.id.menu_export_selection -> RssSourceManageAction.ExportOrShareSelection
         R.id.menu_check_selected_interval -> {
             RssSourceManageAction.CompleteSelectionInterval
         }

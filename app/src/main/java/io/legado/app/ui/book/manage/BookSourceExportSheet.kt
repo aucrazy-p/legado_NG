@@ -3,6 +3,10 @@ package io.legado.app.ui.book.manage
 import android.content.Context
 import android.graphics.Color as AndroidColor
 import android.view.View
+import androidx.annotation.StringRes
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,12 +32,13 @@ import io.legado.app.ui.design.components.compose.NgDrawerDragHandleVariant
 import io.legado.app.ui.design.theme.NgAppTheme
 import io.legado.app.utils.showWithAppNavigationBarVisibility
 
-/** 书架管理导出书源的分享／本地保存目标抽屉。 */
+/** 书源与订阅源共用的分享／本地保存／上传目标抽屉。 */
 class BookSourceExportSheet(
     private val context: Context,
     private val onShare: () -> Unit,
     private val onSaveLocally: () -> Unit,
     private val onUpload: () -> Unit,
+    @StringRes private val titleRes: Int = R.string.export_book_source,
 ) {
 
     private val dialog by lazy { BottomSheetDialog(context) }
@@ -58,6 +63,7 @@ class BookSourceExportSheet(
                 isFitToContents = true
                 skipCollapsed = true
                 isDraggable = true
+                isDraggableOnNestedScroll = true
                 state = BottomSheetBehavior.STATE_EXPANDED
             }
         }
@@ -87,11 +93,17 @@ class BookSourceExportSheet(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // Header/handle drags must reach the existing nested-scroll bridge.
+                    // The native sheet owns the offset, settling and dismissal.
+                    .scrollable(
+                        state = rememberScrollableState { 0f },
+                        orientation = Orientation.Vertical,
+                    )
                     .navigationBarsPadding()
                     .padding(start = 16.dp, top = 6.dp, end = 16.dp, bottom = 12.dp),
             ) {
                 NgDrawerDragHandle(variant = NgDrawerDragHandleVariant.COMPACT)
-                NgCompactDrawerHeader(title = stringResource(R.string.export_book_source))
+                NgCompactDrawerHeader(title = stringResource(titleRes))
                 Spacer(Modifier.height(2.dp))
                 NgCompactDrawerSelectionPanel(
                     items = items,

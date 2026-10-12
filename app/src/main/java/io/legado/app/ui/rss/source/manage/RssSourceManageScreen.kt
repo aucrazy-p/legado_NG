@@ -102,8 +102,7 @@ internal sealed interface RssSourceManageAction {
     data object RemoveSelectionFromGroup : RssSourceManageAction
     data object TopSelection : RssSourceManageAction
     data object BottomSelection : RssSourceManageAction
-    data object ExportSelection : RssSourceManageAction
-    data object ShareSelection : RssSourceManageAction
+    data object ExportOrShareSelection : RssSourceManageAction
     data object CompleteSelectionInterval : RssSourceManageAction
     data object SelectAll : RssSourceManageAction
     data object InvertSelection : RssSourceManageAction
