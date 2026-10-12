@@ -78,6 +78,8 @@ import io.legado.app.ui.design.components.compose.NgDrawerDragHandleVariant
 import io.legado.app.ui.design.components.compose.NgDrawerContentCardStyle
 import io.legado.app.ui.design.components.compose.NgLazyListFastScroller
 import io.legado.app.ui.design.components.compose.NgGlassSurface
+import io.legado.app.ui.design.components.compose.NgGlassDefaults
+import io.legado.app.ui.design.components.compose.NgMaterialRole
 import io.legado.app.ui.design.components.compose.NgSearchBar
 import io.legado.app.ui.design.components.compose.NgSearchBarVariant
 import io.legado.app.ui.design.components.compose.NgSurface
@@ -95,6 +97,7 @@ internal data class ChangeBookSourceProgressUi(
 enum class ChangeBookSourcePresentation {
     DIALOG,
     READING_DIALOG,
+    MANGA_DIALOG,
     DRAWER,
 }
 
@@ -237,14 +240,15 @@ internal fun ChangeBookSourceDialogContent(
             }
             if (
                 presentation == ChangeBookSourcePresentation.DRAWER ||
-                presentation == ChangeBookSourcePresentation.READING_DIALOG
+                presentation == ChangeBookSourcePresentation.READING_DIALOG ||
+                presentation == ChangeBookSourcePresentation.MANGA_DIALOG
             ) {
                 val baseSnapshot = NgTheme.snapshot
                 NgAppTheme(
                     snapshot = remember(baseSnapshot, presentation) {
                         if (
-                            presentation != ChangeBookSourcePresentation.DIALOG &&
-                            baseSnapshot.isDark
+                            presentation == ChangeBookSourcePresentation.MANGA_DIALOG ||
+                            (presentation != ChangeBookSourcePresentation.DIALOG && baseSnapshot.isDark)
                         ) {
                             baseSnapshot
                         } else {
@@ -284,6 +288,13 @@ internal fun ChangeBookSourceDialogContent(
             modifier = Modifier.fillMaxSize(),
             shape = RoundedCornerShape(22.dp),
             style = readFloatingGlassStyle(),
+        ) { content() }
+
+        ChangeBookSourcePresentation.MANGA_DIALOG -> NgGlassSurface(
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(22.dp),
+            style = NgGlassDefaults.mangaPanelStyle(),
+            role = NgMaterialRole.MANGA_PANEL,
         ) { content() }
 
         ChangeBookSourcePresentation.DRAWER -> NgBottomDrawerSurface(
@@ -776,6 +787,7 @@ private fun ChangeBookSourceProgress(
         )
 
         ChangeBookSourcePresentation.READING_DIALOG,
+        ChangeBookSourcePresentation.MANGA_DIALOG,
         ChangeBookSourcePresentation.DRAWER -> ChangeBookSourceDrawerProgress(
             text = progress.text,
             fraction = fraction,

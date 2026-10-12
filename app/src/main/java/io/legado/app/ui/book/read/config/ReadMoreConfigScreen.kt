@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -37,7 +36,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -47,15 +45,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.PopupProperties
 import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.ui.book.read.ReadDrawerStyle
@@ -491,16 +482,6 @@ private fun ChoiceSettingRow(
     val selectedLabel = options.firstOrNull { it.value == selectedValue }?.label
         ?: options.firstOrNull()?.label.orEmpty()
     val contentColor = Color(NgTheme.colors.onSurface)
-    val density = LocalDensity.current
-    val gapPx = with(density) { 6.dp.roundToPx() }
-    val marginPx = with(density) { 8.dp.roundToPx() }
-    val popupPositionProvider = remember(gapPx, marginPx, preferPopupBelow) {
-        EndAnchoredPopupPositionProvider(
-            gapPx = gapPx,
-            marginPx = marginPx,
-            preferBelow = preferPopupBelow,
-        )
-    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -538,84 +519,15 @@ private fun ChoiceSettingRow(
                     tint = contentColor.copy(alpha = 0.72f),
                 )
             }
-            if (expanded) {
-                Popup(
-                    popupPositionProvider = popupPositionProvider,
-                    onDismissRequest = { expanded = false },
-                    properties = PopupProperties(focusable = true),
-                ) {
-                    NgGlassSurface(
-                        modifier = Modifier.width(156.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        style = readFloatingGlassStyle(),
-                    ) {
-                        options.forEach { option ->
-                            DropdownMenuItem(
-                                modifier = Modifier
-                                    .height(42.dp)
-                                    .semantics {
-                                        selected = option.value == selectedValue
-                                    },
-                                text = {
-                                    Text(
-                                        text = option.label,
-                                        color = if (option.value == selectedValue) {
-                                            Color(NgTheme.colors.secondary)
-                                        } else {
-                                            contentColor
-                                        },
-                                        fontSize = 14.sp,
-                                        fontWeight = if (option.value == selectedValue) {
-                                            FontWeight.Medium
-                                        } else {
-                                            FontWeight.Normal
-                                        },
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                },
-                                onClick = {
-                                    expanded = false
-                                    onSelected(option.value)
-                                },
-                            )
-                        }
-                    }
-                }
-            }
+            ReadChoicePopup(
+                expanded = expanded,
+                options = options,
+                selectedValue = selectedValue,
+                onDismissRequest = { expanded = false },
+                onSelected = onSelected,
+                preferPopupBelow = preferPopupBelow,
+            )
         }
-    }
-}
-
-private class EndAnchoredPopupPositionProvider(
-    private val gapPx: Int,
-    private val marginPx: Int,
-    private val preferBelow: Boolean,
-) : PopupPositionProvider {
-    override fun calculatePosition(
-        anchorBounds: IntRect,
-        windowSize: IntSize,
-        layoutDirection: LayoutDirection,
-        popupContentSize: IntSize,
-    ): IntOffset {
-        val desiredX = if (layoutDirection == LayoutDirection.Ltr) {
-            anchorBounds.right - popupContentSize.width
-        } else {
-            anchorBounds.left
-        }
-        val maxX = (windowSize.width - popupContentSize.width - marginPx)
-            .coerceAtLeast(marginPx)
-        val x = desiredX.coerceIn(marginPx, maxX)
-        val aboveY = anchorBounds.top - popupContentSize.height - gapPx
-        val belowY = anchorBounds.bottom + gapPx
-        val maxY = (windowSize.height - popupContentSize.height - marginPx)
-            .coerceAtLeast(marginPx)
-        val y = if (preferBelow) {
-            if (belowY <= maxY) belowY else aboveY.coerceAtLeast(marginPx)
-        } else {
-            if (aboveY >= marginPx) aboveY else belowY.coerceAtMost(maxY)
-        }
-        return IntOffset(x, y)
     }
 }
 

@@ -46,6 +46,8 @@ enum class NgMaterialRole {
     CONTENT,
     SETTINGS,
     SOFT_SURFACE,
+    /** 漫画使用不透明浅色工具面，正文不参与面板材质。 */
+    MANGA_PANEL,
 }
 
 @Immutable
@@ -149,6 +151,9 @@ object NgLiquidGlassDefaults {
         )
         NgMaterialRole.SOFT_SURFACE -> NgLiquidGlassSpec(
             3.dp, 12.dp, 18.dp, 0.30f, 1.22f, 0.35f, 0.12f, 0.55f, 0.45.dp
+        )
+        NgMaterialRole.MANGA_PANEL -> spec(NgMaterialRole.SOFT_SURFACE).copy(
+            surfaceAlphaScale = 1f,
         )
     }
 
@@ -287,7 +292,7 @@ fun NgVisualSurface(
     val supportsBackdropEffect = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val visualSystem = visualSystemOverride ?: NgTheme.visualSystem
     val usesLiquidGlass = visualSystem == NgVisualSystem.LIQUID_GLASS &&
-        !NgTheme.snapshot.isEInk
+        !NgTheme.snapshot.isEInk && role != NgMaterialRole.MANGA_PANEL
     val usesSoftGradient = NgThemeModeStore.current(context) ==
         NgThemePresentationMode.SOFT_GRADIENT
     val resolvedViewBackdropSource =

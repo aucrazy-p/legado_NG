@@ -24,13 +24,16 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.book.manga.ReadMangaActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.ReadDrawerStyle
 import io.legado.app.ui.book.read.config.showReadConfirmDialog
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.design.theme.NgAppTheme
+import io.legado.app.ui.design.theme.NgThemeResolver
 import io.legado.app.ui.design.theme.NgThemeSnapshot
+import io.legado.app.ui.design.theme.resolveNgMangaPanelTheme
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.ui.widget.dialog.applyNgDialogWindow
 import io.legado.app.ui.widget.dialog.ngDialogMaxHeight
@@ -111,13 +114,17 @@ open class ChangeBookSourceDialog() : BaseComposeDialogFragment() {
     }
 
     protected open fun themeSnapshot(): NgThemeSnapshot =
-        ReadDrawerStyle.themeSnapshot(requireContext())
+        if (activity is ReadMangaActivity) {
+            resolveNgMangaPanelTheme(NgThemeResolver.resolve(requireContext()))
+        } else {
+            ReadDrawerStyle.themeSnapshot(requireContext())
+        }
 
     protected open fun contentPresentation(): ChangeBookSourcePresentation =
-        if (activity is ReadBookActivity) {
-            ChangeBookSourcePresentation.READING_DIALOG
-        } else {
-            ChangeBookSourcePresentation.DIALOG
+        when (activity) {
+            is ReadMangaActivity -> ChangeBookSourcePresentation.MANGA_DIALOG
+            is ReadBookActivity -> ChangeBookSourcePresentation.READING_DIALOG
+            else -> ChangeBookSourcePresentation.DIALOG
         }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

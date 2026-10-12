@@ -78,5 +78,6 @@ internal object BackupModules {
         PreferKey.disableMangaScale, PreferKey.disableMangaPageAnim, PreferKey.enableMangaHorizontalScroll,
         PreferKey.hideMangaTitle, PreferKey.mangaColorFilter, PreferKey.enableMangaEInk,
         PreferKey.mangaEInkThreshold, PreferKey.disableHorizontalPageSnap, PreferKey.enableMangaGray,
+        PreferKey.mangaReadingStyle, PreferKey.mangaAutoScrollLevel,
     )
 }

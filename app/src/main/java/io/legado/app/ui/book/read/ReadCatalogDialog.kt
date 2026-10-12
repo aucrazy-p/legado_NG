@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -84,6 +85,7 @@ import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -116,8 +118,11 @@ import io.legado.app.ui.design.components.compose.NgSideDrawerSurface
 import io.legado.app.ui.design.components.compose.NgDrawerDefaults
 import io.legado.app.ui.design.components.compose.rememberNgDrawerThemeProfile
 import io.legado.app.ui.design.components.compose.NgDrawerContentCardStyle
+import io.legado.app.ui.design.components.compose.NgDrawerThemeProvider
 import io.legado.app.ui.design.components.compose.NgBookCover
 import io.legado.app.ui.design.components.compose.NgGlassSurface
+import io.legado.app.ui.design.components.compose.NgGlassDefaults
+import io.legado.app.ui.design.components.compose.NgMaterialRole
 import io.legado.app.ui.design.components.compose.NgLazyListFastScroller
 import io.legado.app.ui.design.components.compose.NgLazyListFastScrollerVariant
 import io.legado.app.ui.design.components.compose.NgLongDrawerHeader
@@ -149,9 +154,15 @@ internal abstract class CatalogDrawerDialog : BottomSheetDialogFragment() {
 
     protected abstract fun currentChapterIndex(): Int
 
+    protected open fun maxChapterIndexExclusive(): Int? = null
+
     protected abstract fun onChapterSelected(chapter: BookChapter)
 
     protected open fun showBookmarks(): Boolean = false
+
+    protected open fun showTextTools(): Boolean = true
+
+    protected open fun useDirectChapterControls(): Boolean = false
 
     protected open fun showCacheState(): Boolean = false
 
@@ -177,9 +188,23 @@ internal abstract class CatalogDrawerDialog : BottomSheetDialogFragment() {
     protected open fun visualStyle(): CatalogDrawerVisualStyle =
         CatalogDrawerVisualStyle.LISTENING
 
+    protected open fun useMangaPanelTheme(): Boolean = false
+
+    protected open fun catalogWindowTheme(): NgThemeSnapshot =
+        ReadDrawerStyle.themeSnapshot(requireContext())
+
     protected open fun initialCatalogTheme(book: Book): NgThemeSnapshot? = null
 
     protected open suspend fun resolveCatalogTheme(book: Book): NgThemeSnapshot? = null
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
+        if (visualStyle() == CatalogDrawerVisualStyle.READING_COMPACT_SIDE) {
+            ComponentDialog(requireContext(), R.style.AppTheme_CompactCatalog).also {
+                it.window?.let { window -> WindowCompat.setDecorFitsSystemWindows(window, false) }
+            }
+        } else {
+            super.onCreateDialog(savedInstanceState)
+        }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -207,18 +232,21 @@ internal abstract class CatalogDrawerDialog : BottomSheetDialogFragment() {
         catalogThemeSnapshot = initialCatalogTheme(book)
         cacheRunning = isCacheRunning(book)
         (view as ComposeView).setContent {
-            NgAppTheme(snapshot = catalogThemeSnapshot, updateSystemBars = false) {
+            val catalogContent: @Composable () -> Unit = {
                 ReadCatalogPanel(
                     chapterCount = chapterCount,
                     bookmarks = bookmarks,
                     cachedChapterFiles = cachedChapterFiles,
                     showBookmarks = showBookmarks(),
+                    showTextTools = showTextTools(),
+                    useDirectChapterControls = useDirectChapterControls(),
                     showCacheState = showCacheState(),
                     showCacheAction = showCacheAction(),
                     cacheRunning = cacheRunning,
                     isLocalBook = isLocalBook(),
                     currentChapterIndex = currentChapterIndex(),
                     visualStyle = visualStyle(),
+                    useMangaPanelTheme = useMangaPanelTheme(),
                     book = book,
                     onDismiss = { dismissAllowingStateLoss() },
                     loading = loading,
@@ -273,6 +301,16 @@ internal abstract class CatalogDrawerDialog : BottomSheetDialogFragment() {
                     onBookmarkDelete = ::deleteBookmark,
                 )
             }
+            if (useMangaPanelTheme()) {
+                NgDrawerThemeProvider(
+                    snapshot = requireNotNull(catalogThemeSnapshot),
+                    contentCardStyle = NgDrawerContentCardStyle.ADAPTIVE,
+                    hasThemeProfile = false,
+                    content = catalogContent,
+                )
+            } else {
+                NgAppTheme(snapshot = catalogThemeSnapshot, updateSystemBars = false, content = catalogContent)
+            }
         }
         loadCatalogData(book)
         observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (eventBook, chapter) ->
@@ -292,6 +330,22 @@ internal abstract class CatalogDrawerDialog : BottomSheetDialogFragment() {
 
     override fun onStart() {
         super.onStart()
+        if (visualStyle() == CatalogDrawerVisualStyle.READING_COMPACT_SIDE) {
+            dialog?.window?.apply {
+                setBackgroundDrawableResource(R.color.transparent)
+                clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                decorView.setPadding(0, 0, 0, 0)
+                WindowCompat.setDecorFitsSystemWindows(this, false)
+                statusBarColor = AndroidColor.TRANSPARENT
+                navigationBarColor = AndroidColor.TRANSPARENT
+                WindowCompat.getInsetsController(this, decorView).apply {
+                    isAppearanceLightStatusBars = !catalogWindowTheme().isDark
+                    hide(WindowInsetsCompat.Type.statusBars())
+                }
+                setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            }
+            return
+        }
         dialog?.window?.apply {
             setBackgroundDrawableResource(R.color.transparent)
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
@@ -328,8 +382,11 @@ internal abstract class CatalogDrawerDialog : BottomSheetDialogFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
+                    val maxIndex = maxChapterIndexExclusive()
+                    val chapterDao = appDb.bookChapterDao
                     Triple(
-                        appDb.bookChapterDao.getChapterCount(book.bookUrl),
+                        if (maxIndex == null) chapterDao.getChapterCount(book.bookUrl)
+                        else chapterDao.getChapterCount(book.bookUrl, maxIndex),
                         if (showBookmarks()) {
                             appDb.bookmarkDao.getByBook(book.name, book.author)
                         } else {
@@ -341,7 +398,8 @@ internal abstract class CatalogDrawerDialog : BottomSheetDialogFragment() {
                             emptySet()
                         },
                     ) to if (visualStyle() != CatalogDrawerVisualStyle.LISTENING) {
-                        appDb.bookChapterDao.getCatalogOutline(book.bookUrl)
+                        if (maxIndex == null) chapterDao.getCatalogOutline(book.bookUrl)
+                        else chapterDao.getCatalogOutline(book.bookUrl, maxIndex)
                     } else null
                 }
             }.onSuccess { (data, outline) ->
@@ -360,10 +418,14 @@ internal abstract class CatalogDrawerDialog : BottomSheetDialogFragment() {
 
     private suspend fun loadChapterCount(bookUrl: String, query: String): Int =
         withContext(Dispatchers.IO) {
+            val maxIndex = maxChapterIndexExclusive()
+            val chapterDao = appDb.bookChapterDao
             if (query.isBlank()) {
-                appDb.bookChapterDao.getChapterCount(bookUrl)
+                if (maxIndex == null) chapterDao.getChapterCount(bookUrl)
+                else chapterDao.getChapterCount(bookUrl, maxIndex)
             } else {
-                appDb.bookChapterDao.getChapterCount(bookUrl, query)
+                if (maxIndex == null) chapterDao.getChapterCount(bookUrl, query)
+                else chapterDao.getChapterCount(bookUrl, query, maxIndex)
             }
         }
 
@@ -404,7 +466,16 @@ internal abstract class CatalogDrawerDialog : BottomSheetDialogFragment() {
         offset: Int,
         limit: Int,
     ): List<CatalogChapter> = withContext(Dispatchers.IO) {
-        val chapters = when {
+        val maxIndex = maxChapterIndexExclusive()
+        val chapterDao = appDb.bookChapterDao
+        val chapters = if (maxIndex != null) {
+            when {
+                query.isBlank() && descending -> chapterDao.getChapterPageDescending(bookUrl, offset, limit, maxIndex)
+                query.isBlank() -> chapterDao.getChapterPage(bookUrl, offset, limit, maxIndex)
+                descending -> chapterDao.searchPageDescending(bookUrl, query, offset, limit, maxIndex)
+                else -> chapterDao.searchPage(bookUrl, query, offset, limit, maxIndex)
+            }
+        } else when {
             query.isBlank() && descending -> appDb.bookChapterDao
                 .getChapterPageDescending(bookUrl, offset, limit)
 
@@ -495,28 +566,6 @@ internal class ReadCompactCatalogDialog : ReadCatalogDialog() {
 
     override fun visualStyle(): CatalogDrawerVisualStyle =
         CatalogDrawerVisualStyle.READING_COMPACT_SIDE
-
-    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
-        ComponentDialog(requireContext(), R.style.AppTheme_CompactCatalog).also {
-            it.window?.let { window -> WindowCompat.setDecorFitsSystemWindows(window, false) }
-        }
-
-    override fun onStart() {
-        super.onStart()
-        dialog?.window?.apply {
-            setBackgroundDrawableResource(R.color.transparent)
-            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            decorView.setPadding(0, 0, 0, 0)
-            WindowCompat.setDecorFitsSystemWindows(this, false)
-            statusBarColor = AndroidColor.TRANSPARENT
-            navigationBarColor = AndroidColor.TRANSPARENT
-            WindowCompat.getInsetsController(this, decorView).apply {
-                isAppearanceLightStatusBars = !ReadDrawerStyle.themeSnapshot(requireContext()).isDark
-                hide(WindowInsetsCompat.Type.statusBars())
-            }
-            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        }
-    }
 }
 
 private data class CatalogChapter(
@@ -545,12 +594,15 @@ private fun ReadCatalogPanel(
     bookmarks: List<Bookmark>,
     cachedChapterFiles: Set<String>,
     showBookmarks: Boolean,
+    showTextTools: Boolean,
+    useDirectChapterControls: Boolean,
     showCacheState: Boolean,
     showCacheAction: Boolean,
     cacheRunning: Boolean,
     isLocalBook: Boolean,
     currentChapterIndex: Int,
     visualStyle: CatalogDrawerVisualStyle,
+    useMangaPanelTheme: Boolean,
     loading: Boolean,
     refreshing: Boolean,
     dataVersion: Int,
@@ -565,7 +617,7 @@ private fun ReadCatalogPanel(
     onBookmarkClick: (Bookmark) -> Unit,
     onBookmarkDelete: (Bookmark) -> Unit,
 ) {
-    var showWordCount by remember { mutableStateOf(AppConfig.tocCountWords) }
+    var showWordCount by remember { mutableStateOf(showTextTools && AppConfig.tocCountWords) }
     var useReplace by remember { mutableStateOf(AppConfig.tocUiUseReplace) }
     var autoExpandNotes by remember { mutableStateOf(AppConfig.bookmarkAutoExpandNotes) }
     var toolsExpanded by rememberSaveable(book.bookUrl) { mutableStateOf(false) }
@@ -587,14 +639,14 @@ private fun ReadCatalogPanel(
         outline?.let { visibleCatalogRows(it, collapsedVolumes, descending) }
     }
     var visibleChapterCount by remember(chapterCount) { mutableStateOf(chapterCount) }
-    val drawerThemeProfile = when (visualStyle) {
+    val drawerThemeProfile = if (useMangaPanelTheme) null else when (visualStyle) {
         CatalogDrawerVisualStyle.READING_ORIGINAL -> null
         CatalogDrawerVisualStyle.READING_COMPACT_SIDE -> rememberReadDrawerThemeProfile()
         CatalogDrawerVisualStyle.LISTENING -> rememberNgDrawerThemeProfile()
     }
     val baseSnapshot = NgTheme.snapshot
-    val drawerAppearance = NgDrawerDefaults.rememberAppearance()
-    val primaryStrength = drawerAppearance.primaryStrengthPercent
+    val drawerAppearance = if (useMangaPanelTheme) null else NgDrawerDefaults.rememberAppearance()
+    val primaryStrength = drawerAppearance?.primaryStrengthPercent ?: 0
     val drawerColors = remember(baseSnapshot, drawerThemeProfile, primaryStrength) {
         val backgroundColor = drawerThemeProfile
             ?.takeIf { !baseSnapshot.isEInk && it.source == "custom_color" }
@@ -650,6 +702,20 @@ private fun ReadCatalogPanel(
     }
     val toolsActive = toolsExpanded || query.isNotBlank() ||
         (selectedTab == CatalogTab.Bookmarks && bookmarkFilter.isActive)
+    val directChapterControls = useDirectChapterControls && selectedTab == CatalogTab.Chapters
+    val persistentChapterSearch = directChapterControls &&
+        visualStyle == CatalogDrawerVisualStyle.READING_COMPACT_SIDE
+    val catalogHeaderAction: @Composable () -> Unit = {
+        if (directChapterControls) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                if (visualStyle == CatalogDrawerVisualStyle.READING_ORIGINAL) {
+                    CatalogSearchButton(toolsActive, contentColor, accentColor, onToolsAction)
+                }
+                CatalogRefreshButton(refreshing, accentColor, onRefresh)
+            }
+        } else CatalogToolsButton(toolsActive, contentColor, accentColor, onToolsAction)
+    }
     val bookmarkToolsPanel: @Composable () -> Unit = {
         CatalogBookmarkFilterPanel(
             query = query,
@@ -720,23 +786,30 @@ private fun ReadCatalogPanel(
     }
     val chapterToolsPanel: @Composable () -> Unit = {
         CatalogToolsPanel(query, stringResource(R.string.read_catalog_search_chapters), { query = it },
-            modifier = Modifier.padding(horizontal = 16.dp)) {
-            if (visualStyle != CatalogDrawerVisualStyle.LISTENING) {
+            modifier = Modifier.padding(horizontal = 16.dp),
+            variant = if (persistentChapterSearch) CatalogToolsPanelVariant.MANGA_CAPSULE
+                else CatalogToolsPanelVariant.STANDARD) {
+            if (visualStyle != CatalogDrawerVisualStyle.LISTENING &&
+                (!useDirectChapterControls || volumeIds.isNotEmpty())) {
                 FlowRow(Modifier.fillMaxWidth().padding(top = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     maxItemsInEachRow = if (volumeIds.isNotEmpty()) 2 else 3) {
-                    CatalogToolSwitch(stringResource(R.string.load_word_count), showWordCount,
-                        modifier = Modifier.weight(1f).widthIn(min = 96.dp)) {
-                        showWordCount = it; AppConfig.tocCountWords = it
+                    if (showTextTools) {
+                        CatalogToolSwitch(stringResource(R.string.load_word_count), showWordCount,
+                            modifier = Modifier.weight(1f).widthIn(min = 96.dp)) {
+                            showWordCount = it; AppConfig.tocCountWords = it
+                        }
+                        CatalogToolSwitch(stringResource(R.string.use_replace), useReplace,
+                            modifier = Modifier.weight(1f).widthIn(min = 96.dp)) {
+                            useReplace = it; AppConfig.tocUiUseReplace = it
+                        }
                     }
-                    CatalogToolSwitch(stringResource(R.string.use_replace), useReplace,
-                        modifier = Modifier.weight(1f).widthIn(min = 96.dp)) {
-                        useReplace = it; AppConfig.tocUiUseReplace = it
+                    if (!useDirectChapterControls) {
+                        CatalogToolAction(stringResource(R.string.read_catalog_refresh),
+                            R.drawable.ic_refresh_black_24dp, refreshing,
+                            modifier = Modifier.weight(1f), onClick = onRefresh)
                     }
-                    CatalogToolAction(stringResource(R.string.read_catalog_refresh),
-                        R.drawable.ic_refresh_black_24dp, refreshing,
-                        modifier = Modifier.weight(1f), onClick = onRefresh)
                     if (volumeIds.isNotEmpty()) {
                         CatalogToolAction(stringResource(if (allVolumesCollapsed) R.string.read_catalog_expand_volume
                             else R.string.read_catalog_collapse_volume),
@@ -757,20 +830,14 @@ private fun ReadCatalogPanel(
             if (drawerState.currentValue == DrawerValue.Closed) onDismiss()
         }
         BackHandler {
-            if (toolsExpanded) collapseTools()
+            if (!persistentChapterSearch && toolsExpanded) collapseTools()
             else pagerScope.launch { drawerState.close() }
         }
         ModalNavigationDrawer(
             drawerState = drawerState,
             scrimColor = Color.Black.copy(alpha = 0.48f),
             drawerContent = {
-                NgSideDrawerSurface(
-                    modifier = Modifier.fillMaxHeight().width(sideWidth),
-                    appearance = drawerAppearance.copy(transparencyPercent = 0),
-                    shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
-                    contentCardStyle = NgDrawerContentCardStyle.ADAPTIVE,
-                    themeProfile = drawerThemeProfile,
-                ) {
+                val sideContent: @Composable ColumnScope.() -> Unit = {
                     Column(
                         modifier = Modifier.fillMaxSize()
                             .statusBarsPadding()
@@ -785,9 +852,9 @@ private fun ReadCatalogPanel(
                                 CompactCatalogSortAction(descending, contentColor) { descending = !descending }
                             }
                             Spacer(Modifier.weight(1f))
-                            CatalogToolsButton(toolsActive, contentColor, accentColor, onToolsAction)
+                            catalogHeaderAction()
                         }
-                        if (toolsExpanded) {
+                        if (toolsExpanded || persistentChapterSearch) {
                             if (selectedTab == CatalogTab.Bookmarks) bookmarkToolsPanel() else chapterToolsPanel()
                         }
                         if (selectedTab == CatalogTab.Bookmarks) {
@@ -863,25 +930,45 @@ private fun ReadCatalogPanel(
                                 )
                             }
                         }
-                        CompactCatalogTabs(
-                            tabs = tabs,
-                            selectedTab = selectedTab,
-                            contentColor = contentColor,
-                            mutedColor = mutedColor,
-                            onSelected = { tab ->
-                                pagerScope.launch {
-                                    pagerState.animateScrollToPage(tabs.indexOf(tab))
-                                }
-                            },
-                        )
+                        if (tabs.size > 1) {
+                            CompactCatalogTabs(
+                                tabs = tabs,
+                                selectedTab = selectedTab,
+                                contentColor = contentColor,
+                                mutedColor = mutedColor,
+                                onSelected = { tab ->
+                                    pagerScope.launch {
+                                        pagerState.animateScrollToPage(tabs.indexOf(tab))
+                                    }
+                                },
+                            )
+                        }
                     }
+                }
+                if (useMangaPanelTheme) {
+                    NgGlassSurface(
+                        modifier = Modifier.fillMaxHeight().width(sideWidth),
+                        shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
+                        style = NgGlassDefaults.mangaPanelStyle(),
+                        role = NgMaterialRole.MANGA_PANEL,
+                        content = sideContent,
+                    )
+                } else {
+                    NgSideDrawerSurface(
+                        modifier = Modifier.fillMaxHeight().width(sideWidth),
+                        appearance = requireNotNull(drawerAppearance).copy(transparencyPercent = 0),
+                        shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
+                        contentCardStyle = NgDrawerContentCardStyle.ADAPTIVE,
+                        themeProfile = drawerThemeProfile,
+                        content = sideContent,
+                    )
                 }
             },
         ) { Box(Modifier.fillMaxSize()) }
         return
     }
 
-    BackHandler(enabled = toolsExpanded) { collapseTools() }
+    BackHandler(enabled = !persistentChapterSearch && toolsExpanded) { collapseTools() }
     val content: @Composable () -> Unit = {
         Column(
             modifier = Modifier
@@ -935,13 +1022,13 @@ private fun ReadCatalogPanel(
                     )
                     if (visualStyle == CatalogDrawerVisualStyle.READING_ORIGINAL) {
                         Spacer(Modifier.width(8.dp))
-                        CatalogToolsButton(toolsActive, contentColor, accentColor, onToolsAction)
+                        catalogHeaderAction()
                     }
                 }
             } else if (visualStyle == CatalogDrawerVisualStyle.READING_ORIGINAL) {
                 Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    CatalogToolsButton(toolsActive, contentColor, accentColor, onToolsAction)
+                    catalogHeaderAction()
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -1046,7 +1133,8 @@ private fun ReadCatalogPanel(
                 .fillMaxSize()
                 .nestedScroll(nestedScrollInteropConnection),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            style = readFloatingGlassStyle(),
+            style = if (useMangaPanelTheme) NgGlassDefaults.mangaPanelStyle() else readFloatingGlassStyle(),
+            role = if (useMangaPanelTheme) NgMaterialRole.MANGA_PANEL else NgMaterialRole.SOFT_SURFACE,
         ) {
             content()
         }
@@ -1153,6 +1241,28 @@ private fun CompactCatalogTabs(
                     fontWeight = if (tab == selectedTab) FontWeight.SemiBold else FontWeight.Normal,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CatalogSearchButton(active: Boolean, contentColor: Color, accentColor: Color, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.size(40.dp)) {
+        Icon(painterResource(R.drawable.ic_search), stringResource(R.string.search),
+            Modifier.size(20.dp), tint = if (active) accentColor else contentColor)
+    }
+}
+
+@Composable
+private fun CatalogRefreshButton(refreshing: Boolean, accentColor: Color, onClick: () -> Unit) {
+    val label = stringResource(R.string.read_catalog_refresh)
+    IconButton(onClick = onClick, enabled = !refreshing,
+        modifier = Modifier.size(40.dp).semantics { contentDescription = label }) {
+        if (refreshing) {
+            CircularProgressIndicator(Modifier.size(20.dp), color = accentColor, strokeWidth = 2.dp)
+        } else {
+            Icon(painterResource(R.drawable.ic_refresh_black_24dp), null,
+                Modifier.size(20.dp), tint = accentColor)
         }
     }
 }

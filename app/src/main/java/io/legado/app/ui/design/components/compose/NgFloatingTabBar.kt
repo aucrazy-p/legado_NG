@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
@@ -49,6 +50,7 @@ enum class NgFloatingTabBarVariant {
     STANDARD,
     SOLID_LIGHT_CONTENT,
     SOLID_WHITE_CONTENT,
+    MANGA_SETTINGS,
 }
 enum class NgFloatingTabBarSize { STANDARD, COMPACT }
 
@@ -74,6 +76,7 @@ fun NgFloatingTabBar(
             val selected = index == selectedIndex.coerceIn(items.indices)
             val contentColor = when {
                 !selected -> Color(NgTheme.colors.onSurface)
+                variant == NgFloatingTabBarVariant.MANGA_SETTINGS -> Color(NgTheme.colors.onPrimary)
                 variant == NgFloatingTabBarVariant.SOLID_LIGHT_CONTENT ||
                     variant == NgFloatingTabBarVariant.SOLID_WHITE_CONTENT -> Color.White
                 else -> Color(NgTheme.colors.primary)
@@ -81,7 +84,8 @@ fun NgFloatingTabBar(
             val selectedContainerColor = when (variant) {
                 NgFloatingTabBarVariant.STANDARD -> Color(NgTheme.colors.selectedContainer)
                 NgFloatingTabBarVariant.SOLID_LIGHT_CONTENT,
-                NgFloatingTabBarVariant.SOLID_WHITE_CONTENT -> Color(NgTheme.colors.primary)
+                NgFloatingTabBarVariant.SOLID_WHITE_CONTENT,
+                NgFloatingTabBarVariant.MANGA_SETTINGS -> Color(NgTheme.colors.primary)
             }
             Row(
                 modifier = Modifier
@@ -97,13 +101,13 @@ fun NgFloatingTabBar(
                     )
                     .selectable(
                         selected = selected,
-                        role = Role.Tab,
+                        role = if (variant == NgFloatingTabBarVariant.MANGA_SETTINGS) Role.RadioButton else Role.Tab,
                         onClick = { onTabSelected(index) }
                     )
                     .semantics(mergeDescendants = true) {
                         item.contentDescription?.let { contentDescription = it }
                     }
-                    .padding(horizontal = 10.dp),
+                    .padding(horizontal = if (variant == NgFloatingTabBarVariant.MANGA_SETTINGS) 0.dp else 10.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -135,12 +139,13 @@ fun NgFloatingTabBar(
                     Text(
                         text = label,
                         color = contentColor,
-                        fontSize = 13.sp,
-                        lineHeight = 15.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        textAlign = TextAlign.Center,
+                        fontSize = if (variant == NgFloatingTabBarVariant.MANGA_SETTINGS) 14.sp else 13.sp,
+                        lineHeight = if (variant == NgFloatingTabBarVariant.MANGA_SETTINGS) TextUnit.Unspecified else 15.sp,
+                        fontWeight = if (variant == NgFloatingTabBarVariant.MANGA_SETTINGS) null
+                            else if (selected) FontWeight.Bold else FontWeight.Normal,
+                        textAlign = if (variant == NgFloatingTabBarVariant.MANGA_SETTINGS) TextAlign.Unspecified else TextAlign.Center,
                         maxLines = if (item.count != null && !item.text.isNullOrEmpty()) 2 else 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = if (variant == NgFloatingTabBarVariant.MANGA_SETTINGS) TextOverflow.Clip else TextOverflow.Ellipsis
                     )
                 }
             }
@@ -164,6 +169,18 @@ fun NgFloatingTabBar(
                 content = tabs,
             )
         }
+
+        NgFloatingTabBarVariant.MANGA_SETTINGS -> Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(height)
+                .clip(outerShape)
+                .background(Color(NgTheme.colors.onSurface).copy(alpha = 0.06f))
+                .padding(3.dp)
+                .selectableGroup(),
+            verticalAlignment = Alignment.CenterVertically,
+            content = tabs,
+        )
 
         NgFloatingTabBarVariant.SOLID_LIGHT_CONTENT,
         NgFloatingTabBarVariant.SOLID_WHITE_CONTENT -> Row(

@@ -15,6 +15,7 @@ import io.legado.app.data.entities.RssSource
 import io.legado.app.help.JsExtensions
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.ReadBook
+import io.legado.app.model.ReadManga
 import io.legado.app.model.VideoPlay
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
@@ -254,6 +255,12 @@ open class RssJsExtensions(
                         it.bookUrl,
                         ReadBook.durChapterIndex
                     )
+                }
+            }
+
+            BookType.image -> {
+                book = ReadManga.book?.also {
+                    chapter = appDb.bookChapterDao.getChapter(it.bookUrl, ReadManga.durChapterIndex)
                 }
             }
 

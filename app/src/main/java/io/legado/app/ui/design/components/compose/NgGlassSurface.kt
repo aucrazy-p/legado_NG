@@ -167,6 +167,29 @@ data class NgGlassMaterialViewport(
 
 object NgGlassDefaults {
 
+    /** 漫画工具面：不透明浅色渐变与轻阴影，避免正文纹理干扰操作。 */
+    @Composable
+    fun mangaPanelStyle(): NgGlassStyle {
+        val base = style(containerAlpha = 1f)
+        if (NgTheme.snapshot.isEInk) return base
+        val colors = NgTheme.colors
+        return remember(base, colors) {
+            base.copy(
+                containerTop = Color(colors.surfaceContainerLow),
+                containerBottom = Color(colors.drawerContainer),
+                accentGlow = Color.Transparent,
+                borderColor = Color(colors.outlineVariant).copy(alpha = 0.35f),
+                edgeHighlight = Color.White.copy(alpha = 0.65f),
+                surfaceGloss = Color.Transparent,
+                depthEdge = Color.Transparent,
+                blurRadius = 0.dp,
+                shadowElevation = 2.dp,
+                borderWidth = 0.5.dp,
+                highlightWidth = 0.5.dp,
+            )
+        }
+    }
+
     /**
      * 默认透明度使用主题的 drawerAlpha，对应阅读菜单的轻液态玻璃层级。
      * 密集内容以后可以显式传入 dialogAlpha，但不在组件里绑定具体业务结构。

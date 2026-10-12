@@ -38,8 +38,26 @@ class NativeBookTest {
             "setReverseToc", "setPageAnim", "setReSegment", "setRemoveSameTitle", "setImageStyle",
             "setUseReplaceRule", "setDelTag", "setTtsEngine", "setSplitLongChapter", "setReadSimulating",
             "setStartDate", "setStartChapter", "setDailyChapters", "setOpenCredits", "setCloseCredits",
-            "setPlayMode", "setPlaySpeed", "setIndependentReadStyle", "setCustomBookType",
+            "setPlayMode", "setPlaySpeed", "setIndependentReadStyle", "setCustomBookType", "setMangaReadingStyle",
         ), Book.ReadConfig::class.java.methods.filter { it.name.startsWith("set") }.map { it.name }.toSet())
+    }
+
+    @Test
+    fun mangaReadingStyleIsReadableButCannotBeChangedByBookSource() {
+        val book = Book(name = "本书日漫方向")
+        book.config.mangaReadingStyle = "{\"mode\":0,\"layout\":0,\"rtl\":true,\"effect\":3}"
+        val original = book.config.mangaReadingStyle
+        val result = RhinoScriptEngine.eval(
+            """
+                book.config.mangaReadingStyle = null;
+                book.config.setMangaReadingStyle("changed");
+                book.config["setMangaReadingStyle(java.lang.String)"]("changed");
+                book.getReadConfig().setMangaReadingStyle("changed");
+                book.config.mangaReadingStyle;
+            """.trimIndent(), ScriptBindings().apply { put("book", book) },
+        )
+        assertEquals(original, result)
+        assertEquals(original, book.config.mangaReadingStyle)
     }
 
     @Test

@@ -39,7 +39,9 @@ enum class NgSliderVariant {
     CONTINUOUS,
     INLINE,
     DISCRETE,
-    COMPACT
+    COMPACT,
+    /** 漫画主菜单的细轨道，未读部分保持中性灰。 */
+    MANGA_PROGRESS,
 }
 
 internal fun ngSliderStepValue(
@@ -122,9 +124,9 @@ fun NgSlider(
     val currentValue = value.coerceIn(valueRange)
     val currentOnValueChange = rememberUpdatedState(onValueChange)
     val currentOnValueChangeFinished = rememberUpdatedState(onValueChangeFinished)
-    val compact = variant == NgSliderVariant.COMPACT
+    val compact = variant == NgSliderVariant.COMPACT || variant == NgSliderVariant.MANGA_PROGRESS
     val thumbSize = when (variant) {
-        NgSliderVariant.COMPACT -> 6.dp
+        NgSliderVariant.COMPACT, NgSliderVariant.MANGA_PROGRESS -> 6.dp
         NgSliderVariant.INLINE -> 10.dp
         else -> 12.dp
     }
@@ -198,6 +200,7 @@ fun NgSlider(
             NgSliderVariant.INLINE -> 5.dp.toPx()
             NgSliderVariant.DISCRETE -> 10.dp.toPx()
             NgSliderVariant.COMPACT -> 2.dp.toPx()
+            NgSliderVariant.MANGA_PROGRESS -> 3.dp.toPx()
         }
         val trackStart = thumbRadius
         val trackWidth = (size.width - thumbRadius * 2f).coerceAtLeast(0f)
@@ -212,7 +215,8 @@ fun NgSlider(
         val thumbX = trackStart + trackWidth * fraction
         val enabledAlpha = if (enabled) 1f else 0.45f
         val primary = Color(colors.primary).copy(alpha = enabledAlpha)
-        val inactive = Color(colors.primary).copy(alpha = 0.16f * enabledAlpha)
+        val inactive = Color(if (variant == NgSliderVariant.MANGA_PROGRESS) colors.onSurface else colors.primary)
+            .copy(alpha = 0.16f * enabledAlpha)
         val thumbSurface = Color(colors.surface).copy(alpha = enabledAlpha)
 
         drawRoundRect(

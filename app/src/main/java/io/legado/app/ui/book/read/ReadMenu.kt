@@ -861,26 +861,7 @@ class ReadMenu @JvmOverloads constructor(
         anchor: View
     ) {
         val sourceEnabled = ReadBook.bookSource?.enabled != false
-        val items = buildList {
-            if (showLogin) {
-                add(NgActionPopupItem(R.id.menu_login, R.string.login, R.drawable.ic_lock_outline))
-            }
-            add(NgActionPopupItem(R.id.menu_edit_source, R.string.edit_book_source, R.drawable.ic_edit))
-            add(
-                NgActionPopupItem(
-                    itemId = if (sourceEnabled) R.id.menu_disable_source else R.id.menu_enable,
-                    titleRes = if (sourceEnabled) R.string.disable_book_source else R.string.enable,
-                    iconRes = if (sourceEnabled) {
-                        R.drawable.ic_block_outline
-                    } else {
-                        R.drawable.ic_check_circle_outline
-                    }
-                )
-            )
-            if (showChapterPay) {
-                add(NgActionPopupItem(R.id.menu_chapter_pay, R.string.chapter_pay, R.drawable.ic_check))
-            }
-        }
+        val items = readSourceActionItems(showLogin, sourceEnabled, showChapterPay)
         NgIconActionPopup(context, items, readMenuThemeSnapshot) {
             when (it.itemId) {
                 R.id.menu_login -> callBack.showLogin()

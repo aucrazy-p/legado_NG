@@ -54,7 +54,7 @@ import io.legado.app.R
 import io.legado.app.ui.design.components.compose.ngDrawerContentCardColor
 import io.legado.app.ui.design.theme.NgTheme
 
-internal enum class CatalogToolsPanelVariant { STANDARD, BOOKMARK_INTEGRATED }
+internal enum class CatalogToolsPanelVariant { STANDARD, BOOKMARK_INTEGRATED, MANGA_CAPSULE }
 
 /** Shared inline search shell for chapter tools and bookmark filters. */
 @Composable
@@ -72,7 +72,11 @@ internal fun CatalogToolsPanel(
     val keyboard = LocalSoftwareKeyboardController.current
     var focused by remember { mutableStateOf(false) }
     val integrated = variant == CatalogToolsPanelVariant.BOOKMARK_INTEGRATED
-    val fieldShape = RoundedCornerShape(if (integrated) 8.dp else 13.dp)
+    val fieldShape = when (variant) {
+        CatalogToolsPanelVariant.STANDARD -> RoundedCornerShape(13.dp)
+        CatalogToolsPanelVariant.BOOKMARK_INTEGRATED -> RoundedCornerShape(8.dp)
+        CatalogToolsPanelVariant.MANGA_CAPSULE -> CircleShape
+    }
     val textSize = if (integrated) 13.sp else 14.sp
     Column(modifier.fillMaxWidth().padding(top = 6.dp, bottom = 8.dp)
         .then(if (integrated) Modifier.clip(RoundedCornerShape(14.dp))

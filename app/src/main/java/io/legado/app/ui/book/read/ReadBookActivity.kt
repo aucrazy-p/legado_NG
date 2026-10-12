@@ -133,7 +133,6 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.invisible
-import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.navigationBarGravity
 import io.legado.app.utils.observeEvent
@@ -2610,45 +2609,19 @@ class ReadBookActivity : BaseReadBookActivity(),
             confirmLabel = getString(R.string.yes),
             cancelLabel = getString(R.string.no),
             onConfirm = {
-                Coroutine.async(lifecycleScope) {
-                    val source =
-                        ReadBook.bookSource ?: throw NoStackTraceException("no book source")
-                    val payAction = source.getContentRule().payAction
-                    if (payAction.isNullOrBlank()) {
-                        throw NoStackTraceException("no pay action")
+                executeReadSourcePayAction(
+                    activity = this,
+                    book = book,
+                    chapter = chapter,
+                    bookType = BookType.text,
+                    sourceProvider = { ReadBook.bookSource },
+                ) {
+                    //购买成功后刷新目录
+                    ReadBook.book?.let {
+                        ReadBook.curTextChapter = null
+                        BookHelp.delContent(book, chapter)
+                        loadChapterList(book)
                     }
-                    val java = SourceLoginJsExtensions(this@ReadBookActivity, source, BookType.text)
-                    runScriptWithContext {
-                        source.evalJS(payAction) {
-                            put("java", java)
-                            put("book", book)
-                            put("chapter", chapter)
-                            put("title", chapter.title)
-                            put("baseUrl", chapter.url)
-                            put("result", null)
-                            put("src", null)
-                        }.toString()
-                    }
-                }.onSuccess(IO) {
-                    if (it.isAbsUrl()) {
-                        startActivity<WebViewActivity> {
-                            val bookSource = ReadBook.bookSource
-                            putExtra("title", getString(R.string.chapter_pay))
-                            putExtra("url", it)
-                            putExtra("sourceOrigin", bookSource?.bookSourceUrl)
-                            putExtra("sourceName", bookSource?.bookSourceName)
-                            putExtra("sourceType", bookSource?.getSourceType())
-                        }
-                    } else if (it.isTrue()) {
-                        //购买成功后刷新目录
-                        ReadBook.book?.let {
-                            ReadBook.curTextChapter = null
-                            BookHelp.delContent(book, chapter)
-                            loadChapterList(book)
-                        }
-                    }
-                }.onError {
-                    AppLog.put("执行购买操作出错\n${it.localizedMessage}", it, true)
                 }
             },
         )

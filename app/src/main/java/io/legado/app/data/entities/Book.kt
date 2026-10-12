@@ -484,6 +484,8 @@ data class Book(
         var independentReadStyle: String? = null,
         @SerializedName("customBookType")
         var customBookType: Int? = null,
+        @SerializedName("mangaReadingStyle")
+        var mangaReadingStyle: String? = null,
     ) : Parcelable
 
     class Converters {

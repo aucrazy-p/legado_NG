@@ -1,55 +1,20 @@
 package io.legado.app.ui.book.read.page.delegate
 
 import android.graphics.Canvas
-import android.graphics.drawable.GradientDrawable
-import androidx.core.graphics.withClip
-import androidx.core.graphics.withTranslation
+import io.legado.app.ui.book.read.page.PageCoverRenderer
 import io.legado.app.ui.book.read.page.ReadView
 import io.legado.app.ui.book.read.page.entities.PageDirection
 import io.legado.app.utils.screenshot
 
 class CoverPageDelegate(readView: ReadView) : HorizontalPageDelegate(readView) {
-    private val shadowDrawableR: GradientDrawable
-
-    init {
-        val shadowColors = intArrayOf(0x66111111, 0x00000000)
-        shadowDrawableR = GradientDrawable(
-            GradientDrawable.Orientation.LEFT_RIGHT, shadowColors
-        )
-        shadowDrawableR.gradientType = GradientDrawable.LINEAR_GRADIENT
-    }
+    private val renderer = PageCoverRenderer()
 
     override fun onDraw(canvas: Canvas) {
         if (!isRunning) return
-        val offsetX = touchX - startX
-
-        if ((mDirection == PageDirection.NEXT && offsetX > 0)
-            || (mDirection == PageDirection.PREV && offsetX < 0)
-        ) {
-            return
-        }
-
-        val distanceX = if (offsetX > 0) offsetX - viewWidth else offsetX + viewWidth
-        if (mDirection == PageDirection.PREV) {
-            if (offsetX <= viewWidth) {
-                canvas.withTranslation(distanceX) {
-                    prevRecorder.draw(canvas)
-                }
-                addShadow(distanceX, canvas)
-            } else {
-                prevRecorder.draw(canvas)
-            }
-        } else if (mDirection == PageDirection.NEXT) {
-            val width = nextRecorder.width.toFloat()
-            val height = nextRecorder.height.toFloat()
-            canvas.withClip(width + offsetX, 0f, width, height) {
-                nextRecorder.draw(this)
-            }
-            canvas.withTranslation(distanceX - viewWidth) {
-                curRecorder.draw(this)
-            }
-            addShadow(distanceX, canvas)
-        }
+        renderer.draw(canvas, touchX - startX, mDirection,
+            nextRecorder.width.toFloat(), nextRecorder.height.toFloat(),
+            current = { curRecorder.draw(it) },
+            adjacent = { if (mDirection == PageDirection.PREV) prevRecorder.draw(it) else nextRecorder.draw(it) })
     }
 
     override fun setBitmap() {
@@ -71,21 +36,9 @@ class CoverPageDelegate(readView: ReadView) : HorizontalPageDelegate(readView) {
         }
     }
 
-    private fun addShadow(left: Float, canvas: Canvas) {
-        if (left == 0f) return
-        val dx = if (left < 0) {
-            left + viewWidth
-        } else {
-            left
-        }
-        canvas.withTranslation(dx) {
-            shadowDrawableR.draw(canvas)
-        }
-    }
-
     override fun setViewSize(width: Int, height: Int) {
         super.setViewSize(width, height)
-        shadowDrawableR.setBounds(0, 0, 30, viewHeight)
+        renderer.setViewSize(width, height)
     }
 
     override fun onAnimStop() {

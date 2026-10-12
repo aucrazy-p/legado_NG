@@ -290,6 +290,28 @@ class ReadMangaViewModel(application: Application) : BaseViewModel(application) 
         changeSourceCoroutine?.cancel()
     }
 
+    fun upBookSource(success: () -> Unit) {
+        execute {
+            ReadManga.book?.let(ReadManga::upWebBook)
+        }.onSuccess { success() }
+    }
+
+    fun setSourceEnabled(enabled: Boolean) {
+        val source = ReadManga.bookSource ?: return
+        source.enabled = enabled
+        execute { appDb.bookSourceDao.update(source) }
+    }
+
+    fun refreshChapterList(book: Book) {
+        refreshChapterList(book) {}
+    }
+
+    fun refreshChapterList(book: Book, complete: (Boolean) -> Unit) {
+        execute { loadChapterListAwait(book) }
+            .onSuccess { complete(it) }
+            .onError { complete(false) }
+    }
+
     fun refreshContentDur(book: Book) {
         execute {
             appDb.bookChapterDao.getChapter(book.bookUrl, ReadManga.durChapterIndex)
