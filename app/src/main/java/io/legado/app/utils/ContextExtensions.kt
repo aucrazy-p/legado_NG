@@ -60,7 +60,11 @@ import kotlin.system.exitProcess
 
 inline fun <reified A : Activity> Context.startActivity(configIntent: Intent.() -> Unit = {}) {
     val intent = Intent(this, A::class.java)
-    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    // Keep Activity navigation in its current stack. NEW_TASK can bring the existing
+    // task to the front without opening the requested page when it is the task root.
+    if (this !is Activity) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
     intent.apply(configIntent)
     inheritReadAloudMiniScope(intent, A::class.java)
     startActivity(intent)
