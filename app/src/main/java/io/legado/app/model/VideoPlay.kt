@@ -32,6 +32,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.gsyVideo.ExoVideoManager
 import io.legado.app.help.gsyVideo.ExoVideoManager.Companion.FULLSCREEN_ID
 import io.legado.app.help.gsyVideo.FloatingPlayer
+import io.legado.app.help.gsyVideo.VideoPlaybackTarget
 import io.legado.app.help.gsyVideo.VideoPlayer
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.rss.Rss
@@ -126,11 +127,29 @@ object VideoPlay : CoroutineScope by MainScope(){
     /**
      * 开始播放
      */
-    fun startPlay(player: StandardGSYVideoPlayer) {
+    // Retained only for the unreachable pre-migration controls until visual acceptance.
+    private fun legacyTarget(view: StandardGSYVideoPlayer) = object : VideoPlaybackTarget {
+        private val player = view.getCurrentPlayer()
+        override var seekOnStart: Long
+            get() = player.seekOnStart
+            set(value) { player.seekOnStart = value }
+        override var mapHeadData: Map<String, String>?
+            get() = player.mapHeadData
+            set(value) { player.mapHeadData = value }
+        override fun setUp(url: String?, cache: Boolean, cachePath: File?, title: String?) =
+            player.setUp(url, cache, cachePath, title)
+        override fun startPlayLogic() = player.startPlayLogic()
+    }
+
+    fun startPlay(player: StandardGSYVideoPlayer) = startPlay(legacyTarget(player))
+
+    fun startPlay(player: VideoPlaybackTarget) {
         if (source == null) return
         danmakuStr = null
         danmakuFile = null
-        val player = player.getCurrentPlayer()
+        stopLoading()
+        player.seekOnStart = 0
+        player.loading()
         if (singleUrl) {
             val mUrl = videoUrl ?: return
             Coroutine.async(loadScope, IO) {
@@ -153,6 +172,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                     }
                 }
             }.onError {
+                player.loadError("加载视频链接失败")
                 AppLog.put("加载视频链接失败", it, true)
             }
             return
@@ -161,6 +181,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         (source as? RssSource)?.let { s ->
             val rssArticle = rssStar?.toRssArticle() ?: rssRecord?.toRssArticle()
             if (rssArticle == null) {
+                player.loadError("未找到订阅")
                 appCtx.toastOnUi("未找到订阅")
                 return
             }
@@ -187,6 +208,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                         }
                     }
                 }.onError {
+                    player.loadError("加载订阅源视频链接失败")
                     AppLog.put("加载订阅源视频链接失败", it, true)
                 }
             } else {
@@ -218,6 +240,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                             }
                         }
                     }.onError {
+                        player.loadError("加载订阅源为链接的正文失败")
                         AppLog.put("加载订阅源为链接的正文失败", it, true)
                     }
             }
@@ -225,6 +248,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         }
         val book = book
         if (book == null) {
+            player.loadError("未找到书籍")
             appCtx.toastOnUi("未找到书籍")
             return
         }
@@ -245,6 +269,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         }
         val chapter = chapter
         if (chapter == null) {
+            player.loadError("未找到章节")
             appCtx.toastOnUi("未找到章节")
             return
         }
@@ -281,6 +306,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                     }
                 }
             }.onError {
+                player.loadError("获取资源链接出错")
                 AppLog.put("获取资源链接出错\n$it", it, true)
             }
         isLoading = false
@@ -396,10 +422,23 @@ object VideoPlay : CoroutineScope by MainScope(){
     }
 
     fun stopLoading() {
+        isLoading = false
         loadScope.coroutineContext.cancelChildren()
     }
 
     fun initSource(sourceKey: String?, sourceType: Int?, bookUrl: String?, record:String?): Boolean {
+        stopLoading()
+        // A new source is a new selection; an Activity/Service handoff does not call initSource.
+        toc = null
+        chapter = null
+        volumes.clear()
+        episodes = null
+        durVolume = null
+        chapterInVolumeIndex = 0
+        durVolumeIndex = 0
+        durChapterPos = 0
+        rssStar = null
+        rssRecord = null
         isLoading = true
         source = sourceKey?.let {
             when (sourceType) {
@@ -461,7 +500,9 @@ object VideoPlay : CoroutineScope by MainScope(){
         episodes = toc.subList(startInt + 1, endInt)
     }
 
-    fun upDurIndex(offset: Int, player: StandardGSYVideoPlayer): Boolean {
+    fun upDurIndex(offset: Int, player: StandardGSYVideoPlayer): Boolean = upDurIndex(offset, legacyTarget(player))
+
+    fun upDurIndex(offset: Int, player: VideoPlaybackTarget): Boolean {
         val episodes = episodes ?: return false
         val index = chapterInVolumeIndex + offset
         if (index < 0) {

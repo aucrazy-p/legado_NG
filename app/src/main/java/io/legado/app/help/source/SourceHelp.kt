@@ -218,6 +218,15 @@ object SourceHelp {
 
     fun openVideoPlayer(source: BaseSource?, url: String, title: String, isFloat: Boolean) {
         if (isFloat) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M &&
+                !android.provider.Settings.canDrawOverlays(appCtx)) {
+                io.legado.app.lib.permission.PermissionsCompat.Builder()
+                    .addPermissions(io.legado.app.lib.permission.Permissions.SYSTEM_ALERT_WINDOW)
+                    .rationale(io.legado.app.R.string.float_permission_rationale)
+                    .onGranted { openVideoPlayer(source, url, title, true) }
+                    .request()
+                return
+            }
             val intent = Intent(appCtx, VideoPlayService::class.java).apply {
                 putExtra("videoUrl", url)
                 putExtra("videoTitle", title)

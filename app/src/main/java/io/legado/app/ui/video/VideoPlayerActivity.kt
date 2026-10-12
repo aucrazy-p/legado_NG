@@ -1,6 +1,5 @@
 package io.legado.app.ui.video
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -8,8 +7,6 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
 import android.view.WindowManager
 import android.view.textclassifier.TextClassifier
@@ -18,34 +15,25 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.addCallback
 import androidx.activity.viewModels
-import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
-import androidx.media3.common.util.UnstableApi
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.LinearSmoothScroller
-import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
-import com.shuyu.gsyvideoplayer.listener.GSYSampleCallBack
 import io.legado.app.R
 import io.legado.app.ui.design.theme.NgInterfaceFontMarkwonPlugin
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssSource
-import io.legado.app.databinding.ActivityVideoPlayerBinding
 import io.legado.app.help.GlideImageGetter
 import io.legado.app.help.TextViewTagHandler
 import io.legado.app.help.source.webCacheObject
 import io.legado.app.help.http.BookSourceCookieStore
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.gsyVideo.VideoPlayer
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.help.webView.WebJsExtensions
 import io.legado.app.help.webView.WebJsExtensions.Companion.getInjectionString
@@ -53,9 +41,6 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameJava
 import io.legado.app.help.webView.WebJsExtensions.Companion.nameSource
 import io.legado.app.help.webView.WebViewPool
-import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.backgroundColor
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.VideoPlay
 import io.legado.app.service.VideoPlayService
 import io.legado.app.ui.about.AppLogDialog
@@ -63,17 +48,13 @@ import io.legado.app.ui.about.NetworkLogDialog
 import io.legado.app.model.SourceCallBack
 import io.legado.app.ui.association.OnLineImportActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
-import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.rss.favorites.RssFavoritesDialog
 import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
-import io.legado.app.ui.video.config.SettingsDialog
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.text.ScrollTextView
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.dpToPx
-import io.legado.app.utils.gone
-import io.legado.app.utils.invisible
 import io.legado.app.utils.longSnackbar
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
@@ -81,13 +62,11 @@ import io.legado.app.utils.openUrl
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setHtml
 import io.legado.app.utils.setMarkdown
-import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import io.legado.app.utils.visible
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.html.HtmlPlugin
@@ -96,17 +75,36 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlayerViewModel>(),
+import android.widget.FrameLayout
+import android.provider.Settings
+import androidx.compose.runtime.*
+import io.legado.app.base.ComposeActivityBinding
+import io.legado.app.help.gsyVideo.VideoPlaybackBridge
+import io.legado.app.ui.design.theme.NgAppTheme
+import io.legado.app.ui.design.components.compose.NgDialog
+import io.legado.app.ui.design.components.compose.NgDialogTextActionButton
+import androidx.compose.material3.Text
+import androidx.compose.ui.window.Dialog
+import io.legado.app.lib.permission.Permissions
+import io.legado.app.lib.permission.PermissionsCompat
+
+class VideoPlayerActivity : VMBaseActivity<ComposeActivityBinding, VideoPlayerViewModel>(imageBg = false),
     RssFavoritesDialog.Callback {
-    override val binding by viewBinding(ActivityVideoPlayerBinding::inflate)
+    override val binding by viewBinding(ComposeActivityBinding::inflate)
     override val viewModel by viewModels<VideoPlayerViewModel>()
-    private val playerView: VideoPlayer by lazy { binding.playerView }
-    private var starMenuItem: MenuItem? = null
+    private val introContainer by lazy { FrameLayout(this) }
+    private var presentation by mutableStateOf(VideoPresentation.WINDOW)
+    private var revision by mutableIntStateOf(0)
+    private var showShelfConfirm by mutableStateOf(false)
+    private var pendingFloat = false
+    private var handedOff = false
+    private var initialPresentation = false
+    private var orientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     private var initIntroView = false
     private val introTextView by lazy {
         initIntroView = true
         val inflater = LayoutInflater.from(this)
-        val view = inflater.inflate(R.layout.view_book_intro, binding.tvIntroContainer, false) as ScrollTextView
+        val view = inflater.inflate(R.layout.view_book_intro, introContainer, false) as ScrollTextView
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
             view.revealOnFocusHint = false
         }
@@ -136,123 +134,249 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             }
         })
     }
-    private var isNew = true
-    private var isFullScreen = false
-    private var orientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-    private var menuCustomBtn: MenuItem? = null
-    private val bookSourceEditResult =
-        registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
-            if (it.resultCode == RESULT_OK) {
-                viewModel.upSource {
-                    menuCustomBtn?.isVisible = (VideoPlay.source as? BookSource)?.customButton == true
-                }
-            }
-        }
-    private val rssSourceEditResult =
-        registerForActivityResult(StartActivityContract(RssSourceEditActivity::class.java)) {
-            if (it.resultCode == RESULT_OK) {
-                viewModel.upSource()
-            }
-        }
-    private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
-        it?.let {
-            if (it[2] as Boolean) {
-                VideoPlay.chapterInVolumeIndex = it[0] as Int
-                val durChapterPos = it[1] as Int
-                VideoPlay.durVolumeIndex = it[3] as Int
-                VideoPlay.chapterInVolumeIndex = it[4] as Int
-                VideoPlay.upEpisodes()
-                VideoPlay.saveRead(durChapterPos)
-                if (VideoPlay.episodes.isNullOrEmpty()) {
-                    binding.chapters.visibility = View.GONE
-                } else {
-                    binding.chapters.visibility = View.VISIBLE
-                    val adapter = binding.chapters.adapter as? ChapterAdapter
-                    adapter?.updateData(VideoPlay.episodes)
-                }
-                upView()
-                VideoPlay.startPlay(playerView)
-            }
-        }
+
+    private val bookSourceEditResult = registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
+        if (it.resultCode == RESULT_OK) viewModel.upSource { revision++ }
+    }
+    private val rssSourceEditResult = registerForActivityResult(StartActivityContract(RssSourceEditActivity::class.java)) {
+        if (it.resultCode == RESULT_OK) viewModel.upSource { revision++ }
     }
 
-    @OptIn(UnstableApi::class)
     override fun onActivityCreated(savedInstanceState: Bundle?) {
-        playerView.enlargeImageRes = R.drawable.ic_fullscreen
-        isNew = intent.getBooleanExtra("isNew", true)
-        if (isNew) {
-            intent.getStringExtra("videoUrl")?.let {
-                VideoPlay.videoUrl = it
-                VideoPlay.singleUrl = true
-            }
-            intent.getStringExtra("videoTitle")?.let {
-                binding.titleBar.title = it
-                VideoPlay.videoTitle = it
-            }
-            val sourceKey = intent.getStringExtra("sourceKey")
-            val sourceType = intent.getIntExtra("sourceType", 0)
-            val bookUrl = intent.getStringExtra("bookUrl")
-            val record = intent.getStringExtra("record")
+        val continuing = (!intent.getBooleanExtra("isNew", true) || savedInstanceState != null) && VideoPlay.source != null
+        if (!continuing) {
+            VideoPlay.singleUrl = intent.hasExtra("videoUrl")
+            VideoPlay.videoUrl = intent.getStringExtra("videoUrl")
+            VideoPlay.videoTitle = intent.getStringExtra("videoTitle")
             VideoPlay.inBookshelf = intent.getBooleanExtra("inBookshelf", true)
-            if (!VideoPlay.initSource(sourceKey, sourceType, bookUrl, record)) {
-                finish()
-                return
+            if (!VideoPlay.initSource(intent.getStringExtra("sourceKey"), intent.getIntExtra("sourceType", 0),
+                    intent.getStringExtra("bookUrl"), intent.getStringExtra("record"))) {
+                super.finish(); return
             }
-            VideoPlay.startPlay(playerView)
-            VideoPlay.saveRead()
-        } else {
-            VideoPlay.clonePlayState(playerView)
-            playerView.setSurfaceToPlay()
-            playerView.startAfterPrepared()
-            binding.titleBar.title = VideoPlay.videoTitle
+            VideoPlay.startPlay(VideoPlaybackBridge)
+            if (!VideoPlay.singleUrl) VideoPlay.saveRead(VideoPlay.durChapterPos)
         }
-        setupPlayerView()
-        initView()
-        upView()
-        onBackPressedDispatcher.addCallback(this) {
-            if (isFullScreen) {
-                toggleFullScreen()
-                return@addCallback
+        savedInstanceState?.getString("videoPresentation")?.let {
+            presentation = runCatching { VideoPresentation.valueOf(it) }.getOrDefault(VideoPresentation.WINDOW)
+            initialPresentation = true
+        }
+        VideoPlay.book?.takeIf { book ->
+            val intro = book.getDisplayIntro().orEmpty()
+            intro.startsWith("<useweb>") || intro.startsWith("<usehtml>") || intro.startsWith("<md>")
+        }?.let(::showBookIntro)
+        viewModel.upStarMenuData.observe(this) { revision++ }
+        binding.composeView.setContent {
+            NgAppTheme(updateSystemBars = false) {
+                VideoPlayerScreen(this, presentation, revision, introContainer, ::changePresentation,
+                    { onBackPressedDispatcher.onBackPressed() }, ::handleAction, ::selectEpisode)
+                if (showShelfConfirm) Dialog({ showShelfConfirm = false }) {
+                    NgDialog(getString(R.string.add_to_bookshelf), actions = {
+                        NgDialogTextActionButton(getString(R.string.no), {
+                            showShelfConfirm = false; callBackBookEnd()
+                            viewModel.removeFromBookshelf { super.finish() }
+                        })
+                        NgDialogTextActionButton(getString(R.string.ok), {
+                            VideoPlay.book?.removeType(BookType.notShelf)
+                            VideoPlay.book?.save(); VideoPlay.inBookshelf = true
+                            setResult(RESULT_OK); showShelfConfirm = false
+                        })
+                    }) { Text(getString(R.string.check_add_bookshelf, VideoPlay.book?.name.orEmpty())) }
+                }
             }
-            finish()
+        }
+        onBackPressedDispatcher.addCallback(this) {
+            if (presentation != VideoPresentation.WINDOW) changePresentation(VideoPresentation.WINDOW) else finish()
+        }
+        lifecycleScope.launch {
+            VideoPlaybackBridge.owner.collect { owner ->
+                if (pendingFloat && owner is VideoPlayService) {
+                    pendingFloat = false; handedOff = true; super@VideoPlayerActivity.finish()
+                }
+            }
+        }
+        lifecycleScope.launch {
+            VideoPlaybackBridge.state.collect { state ->
+                if (state.playing || state.preparing) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                if (!initialPresentation && state.prepared && state.width > 0 && state.height > 0) {
+                    initialPresentation = true
+                    if (VideoPlay.startFull && VideoPlay.autoPlay) changePresentation(VideoPresentation.FULLSCREEN)
+                    else if (VideoPlay.isPortraitVideo) changePresentation(VideoPresentation.IMMERSIVE)
+                }
+            }
         }
     }
 
-    private fun initView() {
-        viewModel.upStarMenuData.observe(this) { upStarMenu() }
-        binding.root.setBackgroundColor(backgroundColor)
-        val book = VideoPlay.book
-        if (book == null) {
-            binding.data.invisible()
-            binding.chaptersContainer.invisible()
+    private fun selectEpisode(volumeIndex: Int, episodeIndex: Int) {
+        val groups = videoEpisodeGroups(VideoPlay.toc.orEmpty(), { it.isVolume }, {
+            it.url.isNotBlank() && !it.url.startsWith(it.title)
+        })
+        if (groups.getOrNull(volumeIndex)?.items?.none { it.episodeIndex == episodeIndex } != false) return
+        if (volumeIndex == VideoPlay.durVolumeIndex && episodeIndex == VideoPlay.chapterInVolumeIndex) return
+        VideoPlay.durVolumeIndex = volumeIndex
+        VideoPlay.chapterInVolumeIndex = episodeIndex
+        VideoPlay.upEpisodes(); VideoPlay.saveRead(0); revision++
+        VideoPlay.startPlay(VideoPlaybackBridge)
+    }
+    private fun changePresentation(mode: VideoPresentation) {
+        if (presentation == VideoPresentation.WINDOW) {
+            orientation = when (requestedOrientation) {
+                ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,
+                ActivityInfo.SCREEN_ORIENTATION_USER,
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR ->
+                    if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT)
+                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else -> requestedOrientation
+            }
+        }
+        presentation = mode
+        toggleSystemBar(mode == VideoPresentation.WINDOW)
+        requestedOrientation = when (mode) {
+            VideoPresentation.WINDOW -> orientation
+            VideoPresentation.IMMERSIVE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            VideoPresentation.FULLSCREEN -> if (VideoPlay.isPortraitVideo) ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+    }
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        toggleSystemBar(presentation == VideoPresentation.WINDOW)
+    }
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("videoPresentation", presentation.name)
+        super.onSaveInstanceState(outState)
+    }
+    private fun handleAction(id: Int) {
+        when (id) {
+            R.id.menu_custom_btn -> {
+                (VideoPlay.source as? BookSource)?.let {source ->
+                    VideoPlay.book?.let { book ->
+                        SourceCallBack.callBackBtn(
+                            this,
+                            SourceCallBack.CLICK_CUSTOM_BUTTON,
+                            source,
+                            book,
+                            VideoPlay.chapter,
+                            BookType.video
+                        )
+                    }
+                }
+            }
+            R.id.menu_rss_star -> viewModel.addFavorite {
+                VideoPlay.rssStar?.let { showDialogFragment(RssFavoritesDialog(it)) }
+            }
+            R.id.menu_float_window -> startFloatingWindow()
+            R.id.menu_config_settings -> Unit
+            R.id.menu_login -> VideoPlay.source?.let {s ->
+               when (s) {
+                    is BookSource -> {
+                        startActivity<SourceLoginActivity> {
+                            putExtra("bookType", BookType.video)
+                        }
+                    }
+                    is RssSource -> {
+                        startActivity<SourceLoginActivity> {
+                            putExtra("type", "rssSource")
+                            putExtra("key", s.getKey())
+                        }
+                    }
+                }
+            }
+
+            R.id.menu_copy_video_url -> {
+                val url = VideoPlay.videoUrl
+                if (url.isNullOrBlank()){
+                    this.toastOnUi("暂无播放地址")
+                    return
+                }
+                VideoPlay.book?.let {
+                    SourceCallBack.callBackBtn(
+                        this,
+                        SourceCallBack.CLICK_COPY_PLAY_URL,
+                        VideoPlay.source as? BookSource,
+                        it,
+                        VideoPlay.chapter,
+                        BookType.video,
+                        url
+                    ) {
+                        sendToClip(url)
+                    }
+                }
+            }
+            R.id.menu_open_other_video_player -> {
+                val url = VideoPlay.videoUrl
+                if (url.isNullOrBlank()){
+                    this.toastOnUi("暂无播放地址")
+                    return
+                }
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(url.toUri(), "video/*")
+                }
+                startActivity(intent)
+            }
+            R.id.menu_edit_source -> VideoPlay.source?.let {s  ->
+                when (s) {
+                    is BookSource -> bookSourceEditResult.launch {
+                        putExtra("sourceUrl", s.getKey())
+                    }
+                    is RssSource -> rssSourceEditResult.launch {
+                        putExtra("sourceUrl", s.getKey())
+                    }
+                }
+            }
+
+            R.id.menu_log -> showDialogFragment<AppLogDialog>()
+            R.id.menu_network_log -> showDialogFragment<NetworkLogDialog>()
+        }
+    }
+
+    private fun startFloatingWindow() {
+        if (pendingFloat) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            PermissionsCompat.Builder().addPermissions(Permissions.SYSTEM_ALERT_WINDOW)
+                .rationale(R.string.float_permission_rationale).onGranted { startFloatingWindow() }.request()
             return
         }
-        showBook(book)
-        if (VideoPlay.episodes.isNullOrEmpty()) {
-            binding.chapters.gone()
-        } else {
-            binding.chapters.visible()
-            showToc(VideoPlay.episodes!!)
+        pendingFloat = true
+        runCatching {
+            ContextCompat.startForegroundService(this, Intent(this, VideoPlayService::class.java).putExtra("isNew", false))
+        }.onFailure {
+            pendingFloat = false; toastOnUi("无法打开小窗：${it.localizedMessage}")
         }
-        if (VideoPlay.volumes.isEmpty()) {
-            binding.volumes.gone()
-        } else {
-            binding.volumes.visible()
-            showVolumes(VideoPlay.volumes)
+        lifecycleScope.launch {
+            kotlinx.coroutines.delay(5000)
+            if (pendingFloat) { pendingFloat = false; toastOnUi("小窗未能启动，请重试") }
         }
     }
-
-    private fun showBook(book: Book) {
-        binding.run {
-            showCover(book)
-            tvName.text = book.name
-            book.getRealAuthor().takeIf { it.isNotEmpty() }?.let {
-                tvAuthor.text = it
-            } ?: tvAuthor.gone()
-            showBookIntro(book)
-        }
+    override fun observeLiveBus() {
+        observeEventSticky<String>(EventBus.VIDEO_SUB_TITLE) { revision++ }
+        observeEvent<ArrayList<Int>>(EventBus.UP_VIDEO_INFO) { revision++ }
     }
-
+    override fun finish() {
+        if (pendingFloat) return
+        if (handedOff || VideoPlay.book == null) return super.finish()
+        if (VideoPlay.inBookshelf) { callBackBookEnd(); return super.finish() }
+        if (!AppConfig.showAddToShelfAlert) {
+            callBackBookEnd(); viewModel.removeFromBookshelf { super.finish() }
+        } else showShelfConfirm = true
+    }
+    private fun callBackBookEnd() {
+        SourceCallBack.callBackBook(SourceCallBack.END_READ, VideoPlay.source as? BookSource, VideoPlay.book, VideoPlay.chapter)
+    }
+    override fun updateFavorite(title: String?, group: String?) = viewModel.updateFavorite(title, group)
+    override fun deleteFavorite() = viewModel.delFavorite()
+    override fun onStart() { super.onStart(); if (initGetter) glideImageGetter.start() }
+    override fun onStop() { super.onStop(); if (initGetter) glideImageGetter.stop() }
+    override fun onDestroy() {
+        destroyWeb()
+        if (initGetter) glideImageGetter.clear()
+        if (!handedOff && !isChangingConfigurations) VideoPlaybackBridge.release(this)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        super.onDestroy()
+    }
+    private fun destroyWeb() {
+        pooledWebView?.let { WebViewPool.release(it) }; pooledWebView = null
+    }
     inner class CustomWebViewClient : WebViewClient() {
         private val jsStr = getInjectionString
         override fun shouldOverrideUrlLoading(
@@ -292,7 +416,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 )
             }
             view?.post {
-                binding.tvIntroContainer.requestLayout()
+                introContainer.requestLayout()
             }
         }
     }
@@ -324,8 +448,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             if (initIntroView || this.pooledWebView == null) {
                 initIntroView = false
                 this.pooledWebView = pooledWebView
-                binding.tvIntroContainer.removeAllViews()
-                binding.tvIntroContainer.addView(webView)
+                introContainer.removeAllViews()
+                introContainer.addView(webView)
             }
             val bookUrl = VideoPlay.book?.bookUrl
                 ?.takeIf { it.startsWith("http", true) }
@@ -341,8 +465,8 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
         if (!initIntroView || pooledWebView != null) {
             destroyWeb()
-            binding.tvIntroContainer.removeAllViews()
-            binding.tvIntroContainer.addView(introTextView)
+            introContainer.removeAllViews()
+            introContainer.addView(introTextView)
         }
         if (intro.isNullOrBlank()) {
             return
@@ -410,410 +534,4 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
     }
 
-    private fun showCover(book: Book) {
-        binding.ivCover.load(book, false)
-    }
-
-    private fun showToc(toc: List<BookChapter>) {
-        binding.ivChapter.setOnClickListener {
-            VideoPlay.book?.bookUrl?.let {
-                tocActivityResult.launch(it)
-            }
-        }
-        val recyclerView = binding.chapters
-        val layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        recyclerView.layoutManager = layoutManager
-        val adapter = ChapterAdapter(toc,VideoPlay.chapterInVolumeIndex, false) { chapter, index ->
-            if (index != VideoPlay.chapterInVolumeIndex) {
-                VideoPlay.chapterInVolumeIndex = index
-                VideoPlay.saveRead(0)
-                upEpisodesView()
-                VideoPlay.startPlay(playerView)
-            }
-        }
-        recyclerView.adapter = adapter
-        scrollToDurChapter(recyclerView, VideoPlay.chapterInVolumeIndex)
-    }
-
-    private fun showVolumes(volumes: List<BookChapter>) {
-        val recyclerView = binding.volumes
-        val layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        recyclerView.layoutManager = layoutManager
-        val adapter = ChapterAdapter(volumes,VideoPlay.durVolumeIndex, true) { chapter, index ->
-            if (index != VideoPlay.durVolumeIndex) {
-                VideoPlay.durVolumeIndex = index
-                VideoPlay.chapterInVolumeIndex = 0
-                VideoPlay.upEpisodes()
-                if (VideoPlay.episodes.isNullOrEmpty()) {
-                    binding.chapters.visibility = View.GONE
-                } else {
-                    binding.chapters.visibility = View.VISIBLE
-                    val adapter = binding.chapters.adapter as? ChapterAdapter
-                    adapter?.updateData(VideoPlay.episodes)
-                }
-                VideoPlay.saveRead(0)
-                upVolumesView()
-                VideoPlay.startPlay(playerView)
-            }
-        }
-        recyclerView.adapter = adapter
-        scrollToDurChapter(recyclerView, VideoPlay.durVolumeIndex)
-    }
-
-    private fun scrollToDurChapter(recyclerView: RecyclerView, index: Int) {
-        recyclerView.postDelayed({
-            val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
-            layoutManager?.run {
-                val smoothScroller = object : LinearSmoothScroller(this@VideoPlayerActivity) {
-                    override fun getHorizontalSnapPreference(): Int {
-                        return SNAP_TO_START // 滚动到最左边
-                    }
-                }
-                smoothScroller.targetPosition = index
-                this.startSmoothScroll(smoothScroller)
-            }
-            val adapter = recyclerView.adapter as? ChapterAdapter
-            adapter?.updateSelectedPosition(index)
-        }, 200)
-    }
-
-    private fun upView() {
-        upEpisodesView()
-        upVolumesView()
-    }
-
-    private fun upEpisodesView() {
-        if (!VideoPlay.episodes.isNullOrEmpty()) {
-            scrollToDurChapter(binding.chapters, VideoPlay.chapterInVolumeIndex)
-        }
-    }
-
-    private fun upVolumesView() {
-        if (!VideoPlay.volumes.isEmpty()) {
-            scrollToDurChapter(binding.volumes, VideoPlay.durVolumeIndex)
-        }
-    }
-
-    private fun toggleFullScreen() {
-        isFullScreen = !isFullScreen
-        toggleSystemBar(!isFullScreen)
-        if (isFullScreen) {
-            orientation = requestedOrientation
-            requestedOrientation = if (VideoPlay.isPortraitVideo) {
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT //竖屏
-            } else {
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE //横屏
-            }
-            supportActionBar?.hide()
-            binding.chaptersContainer.gone()
-            binding.data.gone()
-            playerView.startWindowFullscreen(this, false, false)
-        } else {
-            requestedOrientation = orientation
-            supportActionBar?.show()
-            if (VideoPlay.book != null) {
-                binding.chaptersContainer.visible()
-                binding.data.visible()
-            }
-            playerView.postDelayed({
-                playerView.backFromFull(this)
-            }, if (VideoPlay.isPortraitVideo) 300 else 0)
-            upView()
-        }
-    }
-
-
-    @Suppress("DEPRECATION")
-    @SuppressLint("SwitchIntDef")
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        if (isFullScreen) {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
-            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-            window.addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
-            when (newConfig.orientation) {
-                Configuration.ORIENTATION_LANDSCAPE -> {
-                    if (!VideoPlay.isPortraitVideo) {
-                        toggleFullScreen()
-                    }
-                }
-                Configuration.ORIENTATION_PORTRAIT -> {
-                    if (VideoPlay.isPortraitVideo) {
-                        toggleFullScreen()
-                    }
-                }
-            }
-        }
-    }
-
-    private fun setupPlayerView() {
-        val displayMetrics = resources.displayMetrics
-        val screenWidth = displayMetrics.widthPixels
-        val screenHeight = displayMetrics.heightPixels
-        val layoutParams = playerView.layoutParams
-        layoutParams.width = screenWidth
-        val videoWidth = playerView.currentVideoWidth
-        val videoHeight = playerView.currentVideoHeight
-        val height = if (videoWidth > 0 && videoHeight > 0) (screenWidth * videoHeight / videoWidth) else (screenWidth * 9 / 16) //默认16:9
-        //高度不超过一半屏幕
-        layoutParams.height = if (height < screenHeight / 2) height else screenHeight / 2
-        playerView.layoutParams = layoutParams
-        playerView.isNeedOrientationUtils = false //关闭自带的屏幕方向控制
-        playerView.fullscreenButton.setOnClickListener { toggleFullScreen() }
-        playerView.setBackFromFullScreenListener { toggleFullScreen() }
-        playerView.setVideoAllCallBack(object : GSYSampleCallBack() {
-            @SuppressLint("SourceLockedOrientationActivity")
-            override fun onPrepared(url: String?, vararg objects: Any?) {
-                super.onPrepared(url, *objects)
-                playerView.post {
-                    val player = playerView.getCurrentPlayer()
-                    if (VideoPlay.lockCurScreen &&  !player.getLockCurScreen()) {
-                        player.lockTouchLogic()
-                    }
-                    //根据实际视频比例再次调整
-                    val videoWidth = playerView.currentVideoWidth
-                    val videoHeight = playerView.currentVideoHeight
-                    if (videoWidth > 0 && videoHeight > 0) {
-                        val layoutParams = playerView.layoutParams
-                        val parentWidth = playerView.width
-                        val aspectRatio = videoHeight.toFloat() / videoWidth.toFloat()
-                        val isPortraitVideo = if (aspectRatio > 1.2) true else false
-                        VideoPlay.isPortraitVideo = isPortraitVideo
-                        if (isFullScreen && isPortraitVideo) {
-                            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT //提前进入了全屏，并且默认横屏了，纠正回来
-                            return@post
-                        }
-                        if (VideoPlay.startFull && VideoPlay.autoPlay && !isFullScreen) {
-                            toggleFullScreen()
-                            return@post
-                        }
-                        val height = (parentWidth * aspectRatio).toInt()
-                        val displayMetrics = resources.displayMetrics
-                        val screenHeight = displayMetrics.heightPixels
-                        //高度不超过一半屏幕
-                        layoutParams.height = if (height < screenHeight / 2) height else screenHeight / 2
-                        playerView.layoutParams = layoutParams
-                    }
-                }
-            }
-        })
-    }
-
-    override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.video_play, menu)
-        return super.onCompatCreateOptionsMenu(menu)
-    }
-
-    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        menuCustomBtn = menu.findItem(R.id.menu_custom_btn)?.also {
-            it.isVisible = (VideoPlay.source as? BookSource)?.customButton == true
-        }
-        starMenuItem = menu.findItem(R.id.menu_rss_star)
-        upStarMenu()
-        return super.onPrepareOptionsMenu(menu)
-    }
-
-    private fun upStarMenu() {
-        if (VideoPlay.rssStar != null) {
-            starMenuItem?.isVisible = true
-            starMenuItem?.setIcon(R.drawable.ic_star)
-            starMenuItem?.setTitle(R.string.in_favorites)
-            starMenuItem?.icon?.setTintMutate(primaryTextColor)
-        } else if(VideoPlay.rssRecord != null) {
-            starMenuItem?.isVisible = true
-            starMenuItem?.setIcon(R.drawable.ic_star_border)
-            starMenuItem?.setTitle(R.string.out_favorites)
-            starMenuItem?.icon?.setTintMutate(primaryTextColor)
-        } else {
-            starMenuItem?.isVisible = false
-        }
-    }
-
-    override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
-        menu.findItem(R.id.menu_login)?.isVisible = !VideoPlay.source?.loginUrl.isNullOrBlank()
-        return super.onMenuOpened(featureId, menu)
-    }
-
-    override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.menu_custom_btn -> {
-                (VideoPlay.source as? BookSource)?.let {source ->
-                    VideoPlay.book?.let { book ->
-                        SourceCallBack.callBackBtn(
-                            this,
-                            SourceCallBack.CLICK_CUSTOM_BUTTON,
-                            source,
-                            book,
-                            VideoPlay.chapter,
-                            BookType.video
-                        )
-                    }
-                }
-            }
-            R.id.menu_rss_star -> viewModel.addFavorite {
-                VideoPlay.rssStar?.let { showDialogFragment(RssFavoritesDialog(it)) }
-            }
-            R.id.menu_float_window -> startFloatingWindow()
-            R.id.menu_config_settings -> showDialogFragment(SettingsDialog(this))
-            R.id.menu_login -> VideoPlay.source?.let {s ->
-               when (s) {
-                    is BookSource -> {
-                        startActivity<SourceLoginActivity> {
-                            putExtra("bookType", BookType.video)
-                        }
-                    }
-                    is RssSource -> {
-                        startActivity<SourceLoginActivity> {
-                            putExtra("type", "rssSource")
-                            putExtra("key", s.getKey())
-                        }
-                    }
-                }
-            }
-
-            R.id.menu_copy_video_url -> {
-                val url = VideoPlay.videoUrl
-                if (url.isNullOrBlank()){
-                    this.toastOnUi("暂无播放地址")
-                    return true
-                }
-                VideoPlay.book?.let {
-                    SourceCallBack.callBackBtn(
-                        this,
-                        SourceCallBack.CLICK_COPY_PLAY_URL,
-                        VideoPlay.source as? BookSource,
-                        it,
-                        VideoPlay.chapter,
-                        BookType.video,
-                        url
-                    ) {
-                        sendToClip(url)
-                    }
-                }
-            }
-            R.id.menu_open_other_video_player -> {
-                val url = VideoPlay.videoUrl
-                if (url.isNullOrBlank()){
-                    this.toastOnUi("暂无播放地址")
-                    return true
-                }
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(url.toUri(), "video/*")
-                }
-                startActivity(intent)
-            }
-            R.id.menu_edit_source -> VideoPlay.source?.let {s  ->
-                when (s) {
-                    is BookSource -> bookSourceEditResult.launch {
-                        putExtra("sourceUrl", s.getKey())
-                    }
-                    is RssSource -> rssSourceEditResult.launch {
-                        putExtra("sourceUrl", s.getKey())
-                    }
-                }
-            }
-
-            R.id.menu_log -> showDialogFragment<AppLogDialog>()
-            R.id.menu_network_log -> showDialogFragment<NetworkLogDialog>()
-        }
-        return super.onCompatOptionsItemSelected(item)
-    }
-
-    private fun startFloatingWindow() {
-        VideoPlay.savePlayState(playerView)
-        // 启动悬浮窗服务
-        val intent = Intent(this, VideoPlayService::class.java).apply {
-            putExtra("isNew", false)
-        }
-        ContextCompat.startForegroundService(this, intent)
-        playerView.needDestroy = false
-        finish() //如果在播放器复刻前活动被销毁，会导致状态继承异常（这里服务创建很快，没发现异常）
-    }
-
-    override fun observeLiveBus() {
-
-        observeEventSticky<String>(EventBus.VIDEO_SUB_TITLE) {
-            binding.titleBar.title = it
-        }
-
-        observeEvent<ArrayList<Int>>(EventBus.UP_VIDEO_INFO) {
-            it.forEach { value ->
-                when (value) {
-                    1 -> upEpisodesView()
-                }
-            }
-        }
-
-    }
-
-    override fun finish() {
-        val book = VideoPlay.book ?: return super.finish()
-        if (VideoPlay.inBookshelf) {
-            callBackBookEnd()
-            return super.finish()
-        }
-        if (!AppConfig.showAddToShelfAlert) {
-            callBackBookEnd()
-            viewModel.removeFromBookshelf { super.finish() }
-        } else {
-            alert(title = getString(R.string.add_to_bookshelf)) {
-                setMessage(getString(R.string.check_add_bookshelf, book.name))
-                okButton {
-                    VideoPlay.book?.removeType(BookType.notShelf)
-                    VideoPlay.book?.save()
-                    VideoPlay.inBookshelf = true
-                    setResult(RESULT_OK)
-                }
-                noButton {
-                    callBackBookEnd()
-                    viewModel.removeFromBookshelf { super.finish() }
-                }
-            }
-        }
-    }
-
-    private fun callBackBookEnd() {
-        SourceCallBack.callBackBook(SourceCallBack.END_READ, VideoPlay.source as BookSource?, VideoPlay.book, VideoPlay.chapter)
-    }
-
-    override fun updateFavorite(title: String?, group: String?) {
-        viewModel.updateFavorite(title, group)
-    }
-
-    override fun deleteFavorite() {
-        viewModel.delFavorite()
-    }
-
-    override fun onStart() {
-        super.onStart()
-        if (initGetter) {
-            glideImageGetter.start()
-        }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        if (initGetter) {
-            glideImageGetter.stop()
-        }
-    }
-
-    override fun onDestroy() {
-        destroyWeb()
-        super.onDestroy()
-        if (initGetter) {
-            glideImageGetter.clear()
-        }
-        VideoPlay.saveRead()
-        VideoPlay.stopLoading()
-        playerView.getCurrentPlayer().release()
-        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-    }
-
-    private fun destroyWeb() {
-        pooledWebView?.let { WebViewPool.release(it) }
-        pooledWebView = null
-    }
 }
