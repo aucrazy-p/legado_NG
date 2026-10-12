@@ -129,7 +129,9 @@ class BookSourceStorageIsolationTest {
                 "sourceVariable_$selected",
                 "infoMap_$selected",
             ),
-            matchingBookSourceVariableCacheKeys(cacheKeys, listOf(selected)).toSet(),
+            cacheKeys.filter(
+                SourceVariableCacheSelection(listOf(selected), listOf(other))::contains
+            ).toSet(),
         )
     }
 

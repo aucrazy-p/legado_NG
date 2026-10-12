@@ -2,6 +2,7 @@ package io.legado.app.help.config
 
 import android.content.Context.MODE_PRIVATE
 import androidx.core.content.edit
+import io.legado.app.data.appDb
 import splitties.init.appCtx
 
 object SourceConfig {
@@ -35,9 +36,7 @@ object SourceConfig {
 
     fun removeSources(origins: Collection<String>) {
         if (origins.isEmpty()) return
-        sp.all.keys.filter { key ->
-            origins.any(key::startsWith)
-        }.let { keys ->
+        matchingSourceConfigKeys(sp.all.keys, origins, appDb.cacheDao.sourceKeys()).let { keys ->
             sp.edit {
                 keys.forEach { key ->
                     remove(key)
@@ -47,4 +46,15 @@ object SourceConfig {
     }
 
 
+}
+
+internal fun matchingSourceConfigKeys(
+    keys: Collection<String>,
+    origins: Collection<String>,
+    retainedOrigins: Collection<String>,
+): List<String> {
+    fun String.belongsTo(origin: String) = this == origin || startsWith("${origin}_")
+    return keys.filter { key ->
+        origins.any(key::belongsTo) && retainedOrigins.none(key::belongsTo)
+    }
 }

@@ -7,11 +7,11 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.RssSource
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.AppCacheManager
 import io.legado.app.help.ConcurrentRateLimiter.Companion.concurrentRecordMap
 import io.legado.app.help.RuleComplete
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.removeSortCache
+import io.legado.app.help.source.deleteSourceVariables
 import io.legado.app.model.SharedJsScope
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
@@ -54,17 +54,20 @@ class RssSourceEditViewModel(application: Application) : BaseViewModel(applicati
                     SharedJsScope.remove(oldSource.jsLib)
                 }
             }
-            rssSource?.let {
-                appDb.rssSourceDao.delete(it)
-                //更新收藏的源地址
-                if (it.sourceUrl != source.sourceUrl) {
-                    appDb.rssStarDao.updateOrigin(source.sourceUrl, it.sourceUrl)
-                    appDb.rssArticleDao.updateOrigin(source.sourceUrl, it.sourceUrl)
-                    appDb.cacheDao.deleteSourceVariables(it.sourceUrl)
-                    AppCacheManager.clearSourceVariables()
+            appDb.runInTransaction {
+                rssSource?.let {
+                    appDb.rssSourceDao.delete(it)
+                    //更新收藏的源地址
+                    if (it.sourceUrl != source.sourceUrl) {
+                        appDb.rssStarDao.updateOrigin(source.sourceUrl, it.sourceUrl)
+                        appDb.rssArticleDao.updateOrigin(source.sourceUrl, it.sourceUrl)
+                    }
+                }
+                appDb.rssSourceDao.insert(source)
+                rssSource?.takeIf { it.sourceUrl != source.sourceUrl }?.let {
+                    appDb.cacheDao.deleteSourceVariables(listOf(it.sourceUrl))
                 }
             }
-            appDb.rssSourceDao.insert(source)
             rssSource = source
             concurrentRecordMap.remove(source.sourceUrl) //删除并发限制缓存
             source

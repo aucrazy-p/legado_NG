@@ -11,7 +11,6 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.RssSource
-import io.legado.app.help.AppCacheManager
 import io.legado.app.help.http.BookSourceCookieStore
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.coroutine.Coroutine
@@ -74,12 +73,10 @@ object SourceHelp {
 
     fun deleteBookSourceParts(sources: List<BookSourcePart>) {
         deleteBookSourceKeys(sources.map { it.bookSourceUrl }.distinct())
-        AppCacheManager.clearSourceVariables()
     }
 
     fun deleteBookSources(sources: List<BookSource>) {
         deleteBookSourceKeys(sources.map { it.bookSourceUrl }.distinct())
-        AppCacheManager.clearSourceVariables()
     }
 
     private fun deleteBookSourceKeys(sourceKeys: List<String>) {
@@ -87,53 +84,34 @@ object SourceHelp {
         appDb.runInTransaction {
             appDb.bookSourceDao.deleteByKeysChunked(sourceKeys)
             val cacheKeys = appDb.cacheDao.allKeys()
-            deleteBookSourceVariables(sourceKeys, cacheKeys)
+            appDb.cacheDao.deleteSourceVariables(sourceKeys, cacheKeys)
             BookSourceCookieStore.clear(sourceKeys)
             BookSourceCacheStore.clear(sourceKeys, cacheKeys)
             SourceConfig.removeSources(sourceKeys)
         }
     }
 
-    private fun deleteBookSourceVariables(
-        sourceKeys: Collection<String>,
-        cacheKeys: Collection<String>,
-    ) {
-        appDb.cacheDao.deleteByKeysChunked(
-            matchingBookSourceVariableCacheKeys(cacheKeys, sourceKeys)
-        )
-    }
-
-    private fun deleteBookSourceInternal(key: String) {
-        appDb.bookSourceDao.delete(key)
-        appDb.cacheDao.deleteSourceVariables(key)
-        BookSourceCookieStore.clear(key)
-        BookSourceCacheStore.clear(key)
-        SourceConfig.removeSource(key)
-    }
-
     fun deleteBookSource(key: String) {
-        deleteBookSourceInternal(key)
-        AppCacheManager.clearSourceVariables()
+        deleteBookSourceKeys(listOf(key))
     }
 
     fun deleteRssSources(sources: List<RssSource>) {
-        appDb.runInTransaction {
-            sources.forEach {
-                deleteRssSourceInternal(it.sourceUrl)
-            }
-        }
-        AppCacheManager.clearSourceVariables()
+        deleteRssSourceKeys(sources.map { it.sourceUrl }.distinct())
     }
 
-    private fun deleteRssSourceInternal(key: String) {
-        appDb.rssSourceDao.delete(key)
-        appDb.rssArticleDao.delete(key)
-        appDb.cacheDao.deleteSourceVariables(key)
+    private fun deleteRssSourceKeys(sourceKeys: List<String>) {
+        if (sourceKeys.isEmpty()) return
+        appDb.runInTransaction {
+            sourceKeys.forEach { key ->
+                appDb.rssSourceDao.delete(key)
+                appDb.rssArticleDao.delete(key)
+            }
+            appDb.cacheDao.deleteSourceVariables(sourceKeys)
+        }
     }
 
     fun deleteRssSource(key: String) {
-        deleteRssSourceInternal(key)
-        AppCacheManager.clearSourceVariables()
+        deleteRssSourceKeys(listOf(key))
     }
 
     fun enableSource(key: String, @SourceType.Type type: Int, enable: Boolean) {
@@ -244,24 +222,4 @@ object SourceHelp {
         }
     }
 
-}
-
-internal fun matchingBookSourceVariableCacheKeys(
-    cacheKeys: Collection<String>,
-    sourceKeys: Collection<String>,
-): List<String> {
-    if (cacheKeys.isEmpty() || sourceKeys.isEmpty()) return emptyList()
-    val exactKeys = buildSet(sourceKeys.size * 4) {
-        sourceKeys.forEach { sourceKey ->
-            add("userInfo_$sourceKey")
-            add("loginHeader_$sourceKey")
-            add("sourceVariable_$sourceKey")
-            add("infoMap_$sourceKey")
-        }
-    }
-    val variablePrefixes = sourceKeys.map { "v_${it}_" }
-    return cacheKeys.filter { cacheKey ->
-        cacheKey in exactKeys ||
-            (cacheKey.startsWith("v_") && variablePrefixes.any(cacheKey::startsWith))
-    }
 }

@@ -32,13 +32,9 @@ object AppCacheManager {
         return queryTTFMap[key]
     }
 
-    fun clearSourceVariables() {
+    internal fun clearSourceVariables(matches: (String) -> Boolean) {
         memoryLruCache.snapshot().keys.forEach {
-            if (it.startsWith("v_")
-                || it.startsWith("userInfo_")
-                || it.startsWith("loginHeader_")
-                || it.startsWith("sourceVariable_")
-            ) {
+            if (matches(it)) {
                 memoryLruCache.remove(it)
             }
         }
