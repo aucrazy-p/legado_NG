@@ -11,7 +11,9 @@ import io.legado.app.data.entities.bookUpdateChapterCount
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.ui.main.BookNewsRefreshState
+import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
+import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.putPrefString
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
@@ -57,6 +59,10 @@ class HomeViewModel(
     private val calendarRefresh = MutableStateFlow(0L)
     private val mutableUpdatesState = MutableStateFlow(HomeUpdatesState())
     internal val updatesState = mutableUpdatesState.asStateFlow()
+    private val mutableAutoRefreshUpdates = MutableStateFlow(
+        application.getPrefBoolean(AUTO_REFRESH_UPDATES_KEY, true)
+    )
+    internal val autoRefreshUpdates = mutableAutoRefreshUpdates.asStateFlow()
     private val updatesRefresh = MutableStateFlow(0L)
     private val widgetPreviewTypes = MutableStateFlow<Set<String>>(emptySet())
 
@@ -292,8 +298,15 @@ class HomeViewModel(
         return true
     }
 
-    internal fun saveVariant(id: String, variantId: String): Boolean {
-        val updated = saveHomeWidgetVariant(mutableState.value, id, variantId) ?: return false
+    internal fun saveVariant(id: String, variantId: String, autoRefreshUpdates: Boolean?): Boolean {
+        val current = mutableState.value
+        val updated = saveHomeWidgetVariant(current, id, variantId) ?: return false
+        if (autoRefreshUpdates != null &&
+            current.displayedWidgets.any { it.id == id && it.typeId == "updates" }
+        ) {
+            getApplication<Application>().putPrefBoolean(AUTO_REFRESH_UPDATES_KEY, autoRefreshUpdates)
+            mutableAutoRefreshUpdates.value = autoRefreshUpdates
+        }
         persistLayout(updated.widgets)
         return true
     }
@@ -339,6 +352,7 @@ class HomeViewModel(
     }
 
     private companion object {
+        const val AUTO_REFRESH_UPDATES_KEY = "homeBookNewsAutoRefresh"
         const val LAYOUT_KEY = "homeWidgetLayout"
         const val DRAFT_KEY = "homeWidgetDraft"
         const val SINGLE_EDIT_KEY = "homeWidgetSingleEditId"

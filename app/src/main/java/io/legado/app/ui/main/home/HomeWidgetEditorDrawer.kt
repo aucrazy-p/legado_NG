@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -50,6 +51,7 @@ import io.legado.app.ui.design.components.compose.NgDrawerContentCardStyle
 import io.legado.app.ui.design.components.compose.NgDrawerDragHandle
 import io.legado.app.ui.design.components.compose.NgDrawerDragHandleVariant
 import io.legado.app.ui.design.components.compose.NgIconButton
+import io.legado.app.ui.design.components.compose.NgFormSwitchRow
 import io.legado.app.ui.design.theme.NgTheme
 
 /** Save commits the surrounding edit; dismissing only discards the drawer's local selection. */
@@ -59,12 +61,16 @@ internal fun HomeWidgetEditorDrawer(
     usedWidgets: List<HomeWidgetInstance>,
     confirmTitle: String,
     onDismiss: () -> Unit,
-    onSave: (String) -> Boolean,
+    autoRefreshUpdates: Boolean?,
+    onSave: (String, Boolean?) -> Boolean,
     onPreviewTypesChanged: (Set<String>) -> Unit = {},
     preview: @Composable (HomeWidgetVariant) -> Unit,
 ) {
     val variants = HomeWidgetCatalog.type(widget.typeId)?.variants ?: return
     var selectedId by rememberSaveable(widget.id, widget.variantId) { mutableStateOf(widget.variantId) }
+    var selectedAutoRefresh by rememberSaveable(widget.id, autoRefreshUpdates) {
+        mutableStateOf(autoRefreshUpdates)
+    }
     val selected = variants.firstOrNull { it.id == selectedId } ?: return
     var submitted by remember(widget.id) { mutableStateOf(false) }
     val previewTypes = remember(widget.typeId) { setOf(widget.typeId) }
@@ -73,10 +79,22 @@ internal fun HomeWidgetEditorDrawer(
         title = stringResource(HomeWidgetContents.find(widget.typeId).titleRes),
         confirmTitle = confirmTitle,
         onDismiss = onDismiss,
-        onConfirm = { if (!submitted) submitted = onSave(selected.id) },
+        onConfirm = { if (!submitted) submitted = onSave(selected.id, selectedAutoRefresh) },
     ) {
         HomeWidgetStyleChooser(widget.typeId, selected, usedWidgets,
             onSelect = { selectedId = it }, preview = preview)
+        selectedAutoRefresh?.let { checked ->
+            HorizontalDivider(
+                modifier = Modifier.padding(top = 12.dp),
+                color = Color(NgTheme.colors.onSurface).copy(alpha = 0.12f),
+            )
+            NgFormSwitchRow(
+                title = stringResource(R.string.pt_auto_refresh),
+                checked = checked,
+                onCheckedChange = { selectedAutoRefresh = it },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            )
+        }
     }
 }
 

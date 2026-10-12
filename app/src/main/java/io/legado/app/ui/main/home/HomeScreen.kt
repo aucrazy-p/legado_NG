@@ -111,7 +111,7 @@ internal fun HomeScreen(
     onCancel: () -> Unit,
     onSave: () -> Unit,
     onAdd: (String, String) -> Boolean,
-    onVariantSave: (String, String) -> Boolean,
+    onVariantSave: (String, String, Boolean?) -> Boolean,
     onSuiteSave: (String) -> Boolean,
     onRemove: (String) -> Unit,
     onMove: (String, String) -> Unit,
@@ -124,6 +124,7 @@ internal fun HomeScreen(
     calendarSelections: Map<String, HomeCalendarSelection>,
     onCalendarAction: (String, HomeCalendarAction) -> Unit,
     updatesState: HomeUpdatesState,
+    autoRefreshUpdates: Boolean,
     onOpenUpdatesBook: (HomeUpdateBook) -> Unit,
     onRetryUpdates: () -> Unit,
     onPreviewTypesChanged: (Set<String>) -> Unit,
@@ -436,8 +437,9 @@ internal fun HomeScreen(
                 usedWidgets = widgets,
                 confirmTitle = stringResource(R.string.save),
                 onDismiss = { editingWidgetId = null },
-                onSave = { variant ->
-                    val applied = onVariantSave(editingWidget.id, variant)
+                autoRefreshUpdates = autoRefreshUpdates.takeIf { editingWidget.typeId == "updates" },
+                onSave = { variant, autoRefresh ->
+                    val applied = onVariantSave(editingWidget.id, variant, autoRefresh)
                     if (applied) editingWidgetId = null
                     applied
                 },

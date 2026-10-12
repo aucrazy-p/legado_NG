@@ -46,7 +46,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
@@ -82,6 +82,7 @@ class HomeFragment() : Fragment(), MainFragmentInterface {
                 val calendarState by viewModel.calendarState.collectAsStateWithLifecycle()
                 val calendarSelections by viewModel.calendarSelections.collectAsStateWithLifecycle()
                 val updatesState by viewModel.updatesState.collectAsStateWithLifecycle()
+                val autoRefreshUpdates by viewModel.autoRefreshUpdates.collectAsStateWithLifecycle()
                 HomeScreen(
                     state = state,
                     bottomInsetPx = bottomInsetPx,
@@ -104,6 +105,7 @@ class HomeFragment() : Fragment(), MainFragmentInterface {
                     calendarSelections = calendarSelections,
                     onCalendarAction = viewModel::onCalendarAction,
                     updatesState = updatesState,
+                    autoRefreshUpdates = autoRefreshUpdates,
                     onOpenUpdatesBook = ::openUpdatesBook,
                     onRetryUpdates = ::refreshUpdates,
                     onPreviewTypesChanged = viewModel::setWidgetPreviewTypes,
@@ -136,8 +138,8 @@ class HomeFragment() : Fragment(), MainFragmentInterface {
                     }
                 }
                 launch {
-                    viewModel.state.map { state ->
-                        !state.editing && state.widgets.any { it.typeId == "updates" }
+                    combine(viewModel.state, viewModel.autoRefreshUpdates) { state, autoRefresh ->
+                        autoRefresh && !state.editing && state.widgets.any { it.typeId == "updates" }
                     }.distinctUntilChanged().collect { enabled ->
                         if (enabled) activityViewModel.refreshBookNews()
                     }
