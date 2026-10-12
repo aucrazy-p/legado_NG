@@ -33,6 +33,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.dismiss
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -123,6 +125,7 @@ internal fun HomeWidgetDrawerShell(
                     ) {
                         Column(
                             Modifier.fillMaxWidth()
+                                .semantics { dismiss { onDismiss(); true } }
                                 .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 12.dp)
                                 .pointerInput(Unit) { detectTapGestures(onTap = {}) },
                         ) {
@@ -149,14 +152,6 @@ internal fun HomeWidgetDrawerShell(
                                     lineHeight = 24.sp,
                                     fontWeight = FontWeight.Medium,
                                 )
-                                NgIconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
-                                    Icon(
-                                        painterResource(R.drawable.ic_baseline_close),
-                                        contentDescription = stringResource(R.string.close),
-                                        tint = Color(NgTheme.colors.onSurface),
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                }
                             }
                             content()
                             if (confirmTitle != null) {
