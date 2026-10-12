@@ -243,12 +243,12 @@ private fun NgTextChoiceCardContent(title: String, selected: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 10.dp),
+            .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = title,
-            modifier = Modifier.padding(end = 20.dp),
+            modifier = Modifier.padding(vertical = 20.dp),
             color = Color(if (selected) colors.primary else colors.onSurface),
             fontSize = 14.sp,
             lineHeight = 18.sp,
@@ -258,7 +258,7 @@ private fun NgTextChoiceCardContent(title: String, selected: Boolean) {
         )
         if (selected) {
             Surface(
-                modifier = Modifier.align(Alignment.CenterEnd).size(16.dp),
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 4.dp).size(16.dp),
                 shape = CircleShape,
                 color = Color(colors.primary),
             ) {
