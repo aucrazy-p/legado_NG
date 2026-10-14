@@ -3,7 +3,7 @@ package io.legado.app.ui.main.chatentry.core
 import kotlin.math.PI
 import kotlin.math.sin
 
-enum class BlueFishStage { IDLE, PEEK, THINKING, AHA, SETTLE, EATING, SURPRISED, SHY }
+enum class BlueFishStage { IDLE, PEEK, THINKING, AHA, SETTLE, EATING, SUSPENDED, LANDING, RELIEF, SCOOTER }
 
 /** Artwork coordinates, with angles in radians. This is transient rendering state. */
 data class BlueFishArmMotion(val tip: PetPoint, val handAngle: Float, val riceBallScale: Float)
@@ -19,6 +19,11 @@ data class BlueFishVisual(
     val chew: Boolean = false,
     val arm: BlueFishArmMotion? = null,
     val bubbleFollowsAnchor: Boolean = false,
+    val actionElapsedMs: Long = 0L,
+    val struggleElapsedMs: Long = 0L,
+    val landingProgress: Float = 0f,
+    val landingOffsetY: Float = 0f,
+    val scooter: BlueFishScooterVisual? = null,
 )
 
 /** Pure sampling of the accepted local v3 animation, independent of frame rate. */
@@ -29,8 +34,6 @@ object BlueFishMotion {
     const val EATING_MS = 16000L
     const val SEQUENCE_MS = THINKING_MS + AHA_MS + SIT_MS + EATING_MS
     const val EDGE_PERIOD_MS = 11000L
-    const val SURPRISED_MS = 650L
-    const val SHY_MS = 1100L
 
     private val thoughts = listOf("∑ ? % #", "{ x ? }", "0x… + ?", "[?] ≠ ∞", "λ / # %", "? → ∑", "% {…} #", "x² ? 0x")
 
@@ -41,30 +44,6 @@ object BlueFishMotion {
         tailAngle = tail(5f, clockMs, 4000L),
         blink = blink(clockMs % 5100L, 3000L, clockMs / 5100L % 4L == 2L),
     )
-
-    /** One intact front pose: no detached head or articulated hand for this reaction. */
-    fun surprised(elapsedMs: Long): BlueFishVisual {
-        val t = elapsedMs.coerceAtLeast(0L)
-        val settle = 1f - smooth(t / SURPRISED_MS.toFloat())
-        return BlueFishVisual(
-            stage = BlueFishStage.SURPRISED,
-            angle = -.025f * settle + sin(t / 700.0).toFloat() * .003f,
-            scaleY = 1f + .006f * settle,
-            tailAngle = tail(2f, t, 2400L),
-        )
-    }
-
-    fun shy(clockMs: Long, elapsedMs: Long): BlueFishVisual {
-        val t = elapsedMs.coerceIn(0L, SHY_MS)
-        val settle = 1f - smooth(t / SHY_MS.toFloat())
-        val idle = idle(clockMs)
-        return BlueFishVisual(
-            stage = BlueFishStage.SHY,
-            angle = idle.angle + sin(t / SHY_MS.toDouble() * PI * 2).toFloat() * .012f * settle,
-            scaleY = idle.scaleY - sin(t / SHY_MS.toDouble() * PI).toFloat() * .004f,
-            tailAngle = tail(2f + 3f * (1f - settle), clockMs, 4000L),
-        )
-    }
 
     fun peek(clockMs: Long, edgeElapsedMs: Long): BlueFishVisual {
         val t = edgeElapsedMs % EDGE_PERIOD_MS

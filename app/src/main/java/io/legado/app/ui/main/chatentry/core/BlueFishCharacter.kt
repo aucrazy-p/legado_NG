@@ -22,7 +22,12 @@ object BlueFishCharacter {
         additionalAssets = listOf(
             "standing-tail.webp", "eat-body.webp", "eat-arm.webp", "eat-tail.webp",
             "mouth-open.webp", "rice-bite.webp", "peek-blink.webp", "idle-blink.webp",
-            "think.webp", "aha.webp", "rice-grains.webp", "drag-surprised.webp", "release-shy.webp",
+            "think.webp", "aha.webp", "rice-grains.webp",
+            "suspended-atlas.webp", "forward-fist-arms.webp",
+            "landing-aftershock.webp", "landing-exhale.webp", "landing-settled.webp",
+            "scooter-ride-left.webp", "scooter-push-left.webp", "scooter-turn-front.webp",
+            "scooter-ride-right.webp", "scooter-turn-left-front.webp", "scooter-turn-right-front.webp",
+            "scooter-turn-near-front.webp", "scooter-turn-left-near.webp", "scooter-turn-left-almost-front.webp",
         ),
         bitmapSampleSize = 2,
     )

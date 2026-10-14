@@ -33,7 +33,7 @@ class BlueFishPetRenderer(private val bitmaps: Map<String, Bitmap>) {
         typeface = Typeface.create("sans-serif", Typeface.NORMAL)
     }
     private val sourceRect = RectF(0f, 0f, SOURCE_SIZE, SOURCE_SIZE)
-    private val surfaceRect = RectF(-PADDING, -PADDING, SOURCE_SIZE + PADDING, SOURCE_SIZE + PADDING)
+    private val surfaceRect = RectF(-PADDING, -PADDING, SOURCE_SIZE + PADDING, SURFACE_HEIGHT / SURFACE_SCALE - PADDING)
     private val rectangle = RectF()
     private val sourceHitBounds = RectF()
     private val rootMatrix = Matrix()
@@ -42,14 +42,16 @@ class BlueFishPetRenderer(private val bitmaps: Map<String, Bitmap>) {
     private val matrixValues = FloatArray(9)
     private val pointValues = FloatArray(2)
     private val arm = BlueFishArmRig()
+    private val suspended = BlueFishSuspendedRenderer(bitmaps)
+    private val scooter = BlueFishScooterRenderer(bitmaps)
 
     // One bounded, reusable surface also supplies the exact alpha mask. No GPU readback is needed.
-    private val surface = Bitmap.createBitmap(SURFACE_SIZE, SURFACE_SIZE, Bitmap.Config.ARGB_8888)
+    private val surface = Bitmap.createBitmap(SURFACE_SIZE, SURFACE_HEIGHT, Bitmap.Config.ARGB_8888)
     private val surfaceCanvas = Canvas(surface).apply {
         scale(SURFACE_SCALE, SURFACE_SCALE)
         translate(PADDING, PADDING)
     }
-    private val pixels = IntArray(SURFACE_SIZE * SURFACE_SIZE)
+    private val pixels = IntArray(SURFACE_SIZE * SURFACE_HEIGHT)
     private val thinkingBody = expressionBody("think.webp")
     private val ahaBody = expressionBody("aha.webp")
     private val sleeveTexture = crop("eat-arm.webp", BlueFishArmRig.SLEEVE_X, BlueFishArmRig.SLEEVE_Y, BlueFishArmRig.SLEEVE_WIDTH, BlueFishArmRig.SLEEVE_HEIGHT)
@@ -139,12 +141,25 @@ class BlueFishPetRenderer(private val bitmaps: Map<String, Bitmap>) {
         inverseRootMatrix.mapPoints(pointValues)
         val x = floor((pointValues[0] + PADDING) * SURFACE_SCALE).toInt()
         val y = floor((pointValues[1] + PADDING) * SURFACE_SCALE).toInt()
-        return x in 0 until SURFACE_SIZE && y in 0 until SURFACE_SIZE && pixels[y * SURFACE_SIZE + x] ushr 24 > 32
+        return x in 0 until SURFACE_SIZE && y in 0 until SURFACE_HEIGHT && pixels[y * SURFACE_SIZE + x] ushr 24 > 32
     }
 
     private fun compose(visual: BlueFishVisual) {
         surface.eraseColor(Color.TRANSPARENT)
         val canvas = surfaceCanvas
+        when (visual.stage) {
+            BlueFishStage.SUSPENDED, BlueFishStage.LANDING, BlueFishStage.RELIEF -> {
+                suspended.draw(canvas, visual)
+                updateAlphaBounds()
+                return
+            }
+            BlueFishStage.SCOOTER -> {
+                scooter.draw(canvas, visual)
+                updateAlphaBounds()
+                return
+            }
+            else -> Unit
+        }
         val eating = visual.stage == BlueFishStage.EATING
         if (visual.stage != BlueFishStage.PEEK) {
             val pivotX = if (eating) 920f else 775f
@@ -158,8 +173,6 @@ class BlueFishPetRenderer(private val bitmaps: Map<String, Bitmap>) {
             BlueFishStage.PEEK -> bitmaps.getValue("peek.webp")
             BlueFishStage.THINKING -> thinkingBody
             BlueFishStage.AHA -> ahaBody
-            BlueFishStage.SURPRISED -> bitmaps.getValue("drag-surprised.webp")
-            BlueFishStage.SHY -> bitmaps.getValue("release-shy.webp")
             BlueFishStage.EATING -> bitmaps.getValue("eat-body.webp")
             else -> bitmaps.getValue("standing-body.webp")
         }
@@ -193,7 +206,11 @@ class BlueFishPetRenderer(private val bitmaps: Map<String, Bitmap>) {
     private fun sameComposition(current: BlueFishVisual, previous: BlueFishVisual?): Boolean = previous != null &&
         current.stage == previous.stage && current.tailAngle == previous.tailAngle &&
         current.blink == previous.blink && current.riceLevel == previous.riceLevel &&
-        current.chew == previous.chew && current.arm == previous.arm
+        current.chew == previous.chew && current.arm == previous.arm &&
+        current.actionElapsedMs == previous.actionElapsedMs &&
+        current.struggleElapsedMs == previous.struggleElapsedMs &&
+        current.landingProgress == previous.landingProgress &&
+        current.landingOffsetY == previous.landingOffsetY && current.scooter == previous.scooter
 
     private fun drawRice(canvas: Canvas, level: Float) {
         if (level <= 0f) return
@@ -293,12 +310,12 @@ class BlueFishPetRenderer(private val bitmaps: Map<String, Bitmap>) {
     }
 
     private fun updateAlphaBounds() {
-        surface.getPixels(pixels, 0, SURFACE_SIZE, 0, 0, SURFACE_SIZE, SURFACE_SIZE)
+        surface.getPixels(pixels, 0, SURFACE_SIZE, 0, 0, SURFACE_SIZE, SURFACE_HEIGHT)
         var left = SURFACE_SIZE
         var right = -1
-        var top = SURFACE_SIZE
+        var top = SURFACE_HEIGHT
         var bottom = -1
-        for (y in 0 until SURFACE_SIZE) for (x in 0 until SURFACE_SIZE) {
+        for (y in 0 until SURFACE_HEIGHT) for (x in 0 until SURFACE_SIZE) {
             if (pixels[y * SURFACE_SIZE + x] ushr 24 <= 32) continue
             if (x < left) left = x
             if (x > right) right = x
@@ -331,6 +348,9 @@ class BlueFishPetRenderer(private val bitmaps: Map<String, Bitmap>) {
         private const val PADDING = 64f
         private const val SURFACE_SIZE = 448
         private const val SURFACE_SCALE = SURFACE_SIZE / (SOURCE_SIZE + PADDING * 2f)
+        // The standing layer is already on the ground while the held layer is
+        // still falling. Reserve 200 source pixels below it without reducing resolution.
+        private const val SURFACE_HEIGHT = 493
         private const val DEGREES = 57.2957795f
     }
 }
