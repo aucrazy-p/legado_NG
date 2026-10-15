@@ -49,6 +49,7 @@ import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.menuCapabilities
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isMobi
 import io.legado.app.help.book.removeType
@@ -631,6 +632,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
 
     private fun showBookChangeSource() {
+        if (ReadBook.book?.menuCapabilities?.changeSource != true) return
         binding.readMenu.runMenuOut()
         ReadBook.book?.let {
             showDialogFragment(ChangeBookSourceDialog(it.name, it.author))
@@ -651,6 +653,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     private fun showChapterChangeSource() = lifecycleScope.launch {
         val book = ReadBook.book ?: return@launch
+        if (!book.menuCapabilities.changeSource) return@launch
         val chapter =
             appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
                 ?: return@launch

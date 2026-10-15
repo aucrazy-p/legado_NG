@@ -7,6 +7,7 @@ import androidx.compose.ui.res.stringResource
 import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.menuCapabilities
 import io.legado.app.ui.design.components.NgStatusTagSpec
 import io.legado.app.ui.design.components.NgStatusTagStyle
 import io.legado.app.ui.design.components.NgStatusTagVariant
@@ -20,6 +21,7 @@ internal fun BookshelfManageBookCard(
     selected: Boolean,
     groupNames: String,
     cachedChapterCount: Int?,
+    cacheChapterTotal: Int?,
     modifier: Modifier = Modifier,
     dragHandleModifier: Modifier = Modifier,
     onToggleSelected: () -> Unit,
@@ -40,17 +42,17 @@ internal fun BookshelfManageBookCard(
         metadataText = sourceName,
         modifier = modifier,
         variant = NgBookshelfManageCardVariant.COVER_CARD,
-        cacheText = if (book.isLocal) {
+        cacheText = if (book.isLocal || !book.menuCapabilities.showCache) {
             null
         } else {
-            "$cachedCountText/${book.totalChapterNum}"
+            "$cachedCountText/${cacheChapterTotal ?: book.totalChapterNum}"
         },
         groupTag = NgStatusTagSpec(
             text = groupNames.ifBlank { stringResource(R.string.no_group) },
             variant = NgStatusTagVariant.NEUTRAL,
             style = inlineStyle
         ),
-        updateTag = NgStatusTagSpec(
+        updateTag = if (!book.menuCapabilities.update) null else NgStatusTagSpec(
             text = stringResource(
                 if (book.canUpdate) R.string.allow_update else R.string.disable_update
             ),

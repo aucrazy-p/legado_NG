@@ -63,6 +63,8 @@ internal fun BookshelfManageScreen(
     books: List<Book>,
     selectedBookUrls: Set<String>,
     cachedChapterCounts: Map<String, Int>,
+    cacheChapterTotals: Map<String, Int>,
+    clearableBookUrls: Set<String>,
     coverUpdateSelection: List<Book>?,
     deleteDialogVisible: Boolean,
     deleteOriginal: Boolean,
@@ -94,6 +96,12 @@ internal fun BookshelfManageScreen(
         books.mapTo(hashSetOf()) { it.bookUrl }
     }
     val selectedCount = selectedBookUrls.count(visibleUrls::contains)
+    val eligibleCounts = remember(books, selectedBookUrls, clearableBookUrls) {
+        val selected = books.filter { it.bookUrl in selectedBookUrls }
+        BookshelfManageDockAction.entries.associateWith { action ->
+            selected.count { action.isApplicable(it, it.bookUrl in clearableBookUrls) }
+        }
+    }
     val listState = rememberLazyListState()
     var isReordering by remember { mutableStateOf(false) }
     val reorderState = rememberReorderableLazyListState(listState) { from, to ->
@@ -152,6 +160,7 @@ internal fun BookshelfManageScreen(
                         selected = selected,
                         groupNames = bookGroupNames(groups, book.group),
                         cachedChapterCount = cachedChapterCounts[book.bookUrl],
+                        cacheChapterTotal = cacheChapterTotals[book.bookUrl],
                         dragHandleModifier = if (books.size > 1) {
                             Modifier.draggableHandle(
                                 onDragStarted = {
@@ -177,6 +186,7 @@ internal fun BookshelfManageScreen(
         BookshelfManageBottomDock(
             selectedCount = selectedCount,
             totalCount = books.size,
+            eligibleCounts = eligibleCounts,
             modifier = Modifier.padding(
                 start = 14.dp,
                 top = 8.dp,

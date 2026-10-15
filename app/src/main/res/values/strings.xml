@@ -818,6 +818,7 @@
     <string name="extract_book_cover_selection">%1$d books to process, %2$d skipped</string>
     <string name="book_cache_label">Cache:</string>
     <string name="book_cache_progress">%1$d/%2$d</string>
+    <string name="epub_parsed_cache_count">Parsed cache: %1$s chapters</string>
     <string name="action_save">Save</string>
     <string name="edit_source">Edit source</string>
     <string name="edit_book_source">Edit Book source</string>
@@ -2600,4 +2601,6 @@
     <string name="all_bookmark_collapse_all">Collapse all</string>
     <string name="all_bookmark_expanded">Expanded</string>
     <string name="all_bookmark_collapsed">Collapsed</string>
+    <string name="book_action_eligible_selection">Processing %1$d items; skipped %2$d unsupported items</string>
+    <string name="book_export_unsupported">This resource does not support text or EPUB export</string>
 </resources>

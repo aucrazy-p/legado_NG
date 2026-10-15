@@ -815,6 +815,7 @@
     <string name="extract_book_cover_selection">可处理 %1$d 本，跳过 %2$d 本</string>
     <string name="book_cache_label">缓存：</string>
     <string name="book_cache_progress">%1$d/%2$d</string>
+    <string name="epub_parsed_cache_count">解析缓存 %1$s章</string>
     <string name="action_save">保存</string>
     <string name="edit_source">编辑源</string>
     <string name="edit_book_source">编辑书源</string>
@@ -2502,4 +2503,6 @@
     <string name="all_bookmark_collapse_all">全部收起</string>
     <string name="all_bookmark_expanded">已展开</string>
     <string name="all_bookmark_collapsed">已收起</string>
+    <string name="book_action_eligible_selection">仅处理 %1$d 项，跳过 %2$d 项不适用资源</string>
+    <string name="book_export_unsupported">该资源不支持文本或 EPUB 导出</string>
 </resources>

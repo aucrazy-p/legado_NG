@@ -9,13 +9,13 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.BookCacheStatus
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.loadBookCacheStatus
+import io.legado.app.help.book.menuCapabilities
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.exoplayer.AudioDownloadCache
 import io.legado.app.model.BookCacheManager
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.webBook.WebBook
@@ -28,6 +28,8 @@ import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeToOutputStream
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.Dispatchers.Main
+import kotlinx.coroutines.withContext
 import java.io.File
 
 
@@ -38,56 +40,55 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
     var batchChangeSourceCoroutine: Coroutine<Unit>? = null
     val cacheChapterCountLiveData = MutableLiveData<String>()
     val cacheChapters = hashMapOf<String, HashSet<String>>()
+    val cacheChapterTotals = hashMapOf<String, Int>()
+    val clearableBookUrls = hashSetOf<String>()
     private var loadCacheFilesCoroutine: Coroutine<Unit>? = null
+    private val cacheRefreshJobs = hashMapOf<String, Coroutine<BookCacheStatus?>>()
 
     fun loadCacheFiles(books: List<Book>) {
         loadCacheFilesCoroutine?.cancel()
         loadCacheFilesCoroutine = execute {
             books.forEach { book ->
-                if (!book.isLocal && !cacheChapters.contains(book.bookUrl)) {
-                    val chapterCaches = hashSetOf<String>()
-                    val cacheNames = if (book.isAudio) {
-                        appDb.bookSourceDao.getBookSource(book.origin)?.let {
-                            AudioDownloadCache.getCachedChapterFileNames(it, book)
-                        }.orEmpty()
-                    } else {
-                        BookHelp.getChapterFiles(book)
+                if (withContext(Main) { !cacheChapters.contains(book.bookUrl) }) {
+                    val status = loadBookCacheStatus(book, appDb.bookChapterDao.getChapterList(book.bookUrl))
+                    withContext(Main) {
+                        if (!cacheChapters.contains(book.bookUrl)) applyCacheStatus(book.bookUrl, status)
                     }
-                    if (cacheNames.isNotEmpty()) {
-                        appDb.bookChapterDao.getChapterList(book.bookUrl).forEach { chapter ->
-                            if (cacheNames.contains(chapter.getFileName()) ||
-                                (!book.isAudio && chapter.isVolume)
-                            ) {
-                                chapterCaches.add(chapter.url)
-                            }
-                        }
-                    }
-                    cacheChapters[book.bookUrl] = chapterCaches
-                    cacheChapterCountLiveData.sendValue(book.bookUrl)
                 }
                 ensureActive()
             }
         }
     }
 
-    fun addCachedChapter(bookUrl: String, chapterUrl: String) {
-        cacheChapters[bookUrl]?.let { chapters ->
-            if (chapters.add(chapterUrl)) {
-                cacheChapterCountLiveData.sendValue(bookUrl)
-            }
+    fun refreshCache(bookUrl: String) {
+        cacheRefreshJobs[bookUrl]?.cancel()
+        cacheRefreshJobs[bookUrl] = execute {
+            // 音频链接保存、音频下载完成及虚拟分卷都会发事件，以真实缓存重读为准。
+            delay(100)
+            val book = appDb.bookDao.getBook(bookUrl) ?: return@execute null
+            loadBookCacheStatus(book, appDb.bookChapterDao.getChapterList(bookUrl))
+        }.onSuccess { status ->
+            if (status != null) applyCacheStatus(bookUrl, status)
         }
+    }
+
+    private fun applyCacheStatus(bookUrl: String, status: BookCacheStatus) {
+        cacheChapters[bookUrl] = HashSet(status.chapterUrls)
+        cacheChapterTotals[bookUrl] = status.total
+        if (status.hasCache) clearableBookUrls.add(bookUrl) else clearableBookUrls.remove(bookUrl)
+        cacheChapterCountLiveData.value = bookUrl
     }
 
     fun upCanUpdate(books: List<Book>, canUpdate: Boolean) {
         execute {
-            val array = Array(books.size) {
-                books[it].copy(canUpdate = canUpdate).apply {
+            val array = books.filter { it.menuCapabilities.update }.map { book ->
+                book.copy(canUpdate = canUpdate).apply {
                     if (!canUpdate) {
                         removeType(BookType.updateError)
                     }
                 }
             }
-            appDb.bookDao.update(*array)
+            appDb.bookDao.update(*array.toTypedArray())
         }
     }
 
@@ -117,7 +118,7 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
     ) {
         execute {
             val sources = books.asSequence()
-                .filterNot { it.isLocal }
+                .filter { it.menuCapabilities.changeSource }
                 .mapNotNull { appDb.bookSourceDao.getBookSource(it.origin) }
                 .distinctBy { it.bookSourceUrl }
                 .toList()
@@ -147,7 +148,7 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
             val changeSourceDelay = AppConfig.batchChangeSourceDelay * 1000L
             books.forEachIndexed { index, book ->
                 batchChangeSourceProcessLiveData.postValue("${index + 1} / ${books.size}")
-                if (book.isLocal) return@forEachIndexed
+                if (!book.menuCapabilities.changeSource) return@forEachIndexed
                 if (book.origin == source.bookSourceUrl) return@forEachIndexed
                 val newBook = WebBook.preciseSearchAwait(source, book.name, book.author)
                     .onFailure {
@@ -185,8 +186,9 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
                 BookCacheManager.clear(it)
             }
         }.onSuccess {
-            books.filterNot { it.isLocal }.forEach { book ->
+            books.forEach { book ->
                 cacheChapters[book.bookUrl] = hashSetOf()
+                clearableBookUrls.remove(book.bookUrl)
                 cacheChapterCountLiveData.sendValue(book.bookUrl)
             }
             context.toastOnUi(R.string.clear_cache_success)

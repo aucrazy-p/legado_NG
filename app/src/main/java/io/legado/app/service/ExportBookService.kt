@@ -22,6 +22,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.menuCapabilities
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.ExportContentImageProcessor
 import io.legado.app.help.book.getExportFileName
@@ -221,6 +222,9 @@ class ExportBookService : BaseService() {
                 val book = appDb.bookDao.getBook(bookUrl)
                 try {
                     book ?: throw NoStackTraceException("获取${bookUrl}书籍出错")
+                    if (!book.menuCapabilities.export) {
+                        throw NoStackTraceException(getString(R.string.book_export_unsupported))
+                    }
                     refreshChapterList(book)
                     notificationContentText = getString(
                         R.string.export_book_notification_content,

@@ -21,7 +21,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.contains
-import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.menuCapabilities
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.model.CacheBook
@@ -82,6 +82,9 @@ class BookshelfManageActivity :
     )
     private var selectedBookUrls by mutableStateOf<Set<String>>(emptySet())
     private var cachedChapterCounts by mutableStateOf<Map<String, Int>>(emptyMap())
+    private var cacheChapterTotals by mutableStateOf<Map<String, Int>>(emptyMap())
+    private var clearableBookUrls by mutableStateOf<Set<String>>(emptySet())
+    private var pendingChangeSourceBooks: List<Book> = emptyList()
     private var deleteDialogVisible by mutableStateOf(false)
     private var deleteOriginal by mutableStateOf(false)
     private var batchChangeSourceRunning by mutableStateOf(false)
@@ -108,6 +111,9 @@ class BookshelfManageActivity :
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         viewModel.groupId = intent.getLongExtra("groupId", -1)
         topBarSelectedGroupId = viewModel.groupId
+        cachedChapterCounts = viewModel.cacheChapters.mapValues { it.value.size }
+        cacheChapterTotals = viewModel.cacheChapterTotals.toMap()
+        clearableBookUrls = viewModel.clearableBookUrls.toSet()
         initContent()
         initGroupData()
         upBookDataByGroupId()
@@ -124,8 +130,15 @@ class BookshelfManageActivity :
         viewModel.batchChangeSourceProcessLiveData.observe(this) {
             batchChangeSourceProgress = it
         }
-        observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (book, chapter) ->
-            viewModel.addCachedChapter(book.bookUrl, chapter.url)
+        observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (book, _) ->
+            if (books.any { it.bookUrl == book.bookUrl }) viewModel.refreshCache(book.bookUrl)
+        }
+        observeEvent<String>(EventBus.UP_DOWNLOAD) { bookUrl ->
+            if (bookUrl.isEmpty()) {
+                books.forEach { viewModel.refreshCache(it.bookUrl) }
+            } else if (books.any { it.bookUrl == bookUrl }) {
+                viewModel.refreshCache(bookUrl)
+            }
         }
     }
 
@@ -142,6 +155,8 @@ class BookshelfManageActivity :
                     books = visibleBooks,
                     selectedBookUrls = selectedBookUrls,
                     cachedChapterCounts = cachedChapterCounts,
+                    cacheChapterTotals = cacheChapterTotals,
+                    clearableBookUrls = clearableBookUrls,
                     coverUpdateSelection = coverUpdateSelection,
                     deleteDialogVisible = deleteDialogVisible,
                     deleteOriginal = deleteOriginal,
@@ -242,6 +257,14 @@ class BookshelfManageActivity :
     private fun notifyBookChanged(bookUrl: String) {
         val count = viewModel.cacheChapters[bookUrl]?.size ?: return
         cachedChapterCounts = cachedChapterCounts + (bookUrl to count)
+        viewModel.cacheChapterTotals[bookUrl]?.let {
+            cacheChapterTotals = cacheChapterTotals + (bookUrl to it)
+        }
+        clearableBookUrls = if (bookUrl in viewModel.clearableBookUrls) {
+            clearableBookUrls + bookUrl
+        } else {
+            clearableBookUrls - bookUrl
+        }
     }
 
     private fun setBookSelected(book: Book, selected: Boolean) {
@@ -279,8 +302,12 @@ class BookshelfManageActivity :
     }
 
     private fun onDockAction(action: BookshelfManageDockAction) {
-        val selected = selectedBooks()
+        val allSelected = selectedBooks()
+        val selected = allSelected.filter { action.isApplicable(it, it.bookUrl in clearableBookUrls) }
         if (selected.isEmpty()) return
+        if (selected.size < allSelected.size) {
+            toastOnUi(getString(R.string.book_action_eligible_selection, selected.size, allSelected.size - selected.size))
+        }
         when (action) {
             BookshelfManageDockAction.CACHE -> selected.forEach { book ->
                 cacheBook(book, 0, book.lastChapterIndex)
@@ -296,7 +323,10 @@ class BookshelfManageActivity :
             BookshelfManageDockAction.EXPORT_CONTENT -> showExportSettings(selected)
             BookshelfManageDockAction.GROUP -> BookshelfBookGroupSheet(this, selected).show()
             BookshelfManageDockAction.EXPORT_SOURCE -> exportBookSources(selected)
-            BookshelfManageDockAction.CHANGE_SOURCE -> showDialogFragment<SourcePickerDialog>()
+            BookshelfManageDockAction.CHANGE_SOURCE -> {
+                pendingChangeSourceBooks = selected
+                showDialogFragment<SourcePickerDialog>()
+            }
             BookshelfManageDockAction.ENABLE_UPDATE -> viewModel.upCanUpdate(selected, true)
             BookshelfManageDockAction.DISABLE_UPDATE -> viewModel.upCanUpdate(selected, false)
             BookshelfManageDockAction.REMOVE_GROUP -> clearSelectedBookGroups(selected)
@@ -402,7 +432,7 @@ class BookshelfManageActivity :
     }
 
     private fun cacheBook(book: Book, start: Int, end: Int) {
-        if (book.isLocal) return
+        if (!book.menuCapabilities.download) return
         CacheBook.start(this, book, start, end)
     }
 
@@ -427,7 +457,7 @@ class BookshelfManageActivity :
         settings: ExportSettingsResult,
     ) {
         val exportType = if (settings.exportType == 1) "epub" else "txt"
-        books.forEach { book ->
+        books.filter { it.menuCapabilities.export }.forEach { book ->
             startService<ExportBookService> {
                 action = IntentAction.start
                 putExtra("bookUrl", book.bookUrl)
@@ -471,7 +501,8 @@ class BookshelfManageActivity :
     }
 
     override fun sourceOnClick(source: BookSource) {
-        viewModel.changeSource(selectedBooks(), source)
-        viewModel.batchChangeSourceState.value = true
+        val selected = pendingChangeSourceBooks.filter { it.menuCapabilities.changeSource }
+        pendingChangeSourceBooks = emptyList()
+        if (selected.isNotEmpty()) viewModel.changeSource(selected, source)
     }
 }
