@@ -333,6 +333,7 @@
     <string name="book_name">书名</string>
     <string name="lasted_show">最新：%s</string>
     <string name="check_add_bookshelf">是否将《%s》放入书架？</string>
+    <string name="video_shelf_decline">不加入</string>
     <string name="import_books_count">共 %s 个文本文件</string>
     <string name="is_loading">加载中…</string>
     <string name="retry">重试</string>

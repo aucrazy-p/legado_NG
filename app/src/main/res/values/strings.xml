@@ -336,6 +336,7 @@
     <string name="book_name">Title</string>
     <string name="lasted_show">Latest: %s</string>
     <string name="check_add_bookshelf">Would you like to add %s to your Bookshelf?</string>
+    <string name="video_shelf_decline">Don’t add</string>
     <string name="import_books_count">%s text file(s) in total</string>
     <string name="is_loading">Loading…</string>
     <string name="retry">Retry</string>
