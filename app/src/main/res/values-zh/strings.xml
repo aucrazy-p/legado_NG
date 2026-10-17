@@ -1625,7 +1625,8 @@
     <string name="read_record_all">全部记录</string>
     <string name="read_record_selected_count">已选 %1$d 项</string>
     <string name="read_record_delete_selected">删除 (%1$d)</string>
-    <string name="read_record_delete_selected_confirm">确定删除所选的 %1$d 条阅读记录？</string>
+    <string name="read_record_delete_selected_confirm">删除所选的 %1$d 条单本记录？总时长和日历会保留。</string>
+    <string name="read_record_clear_books_confirm">清空所有单本记录？总时长和日历会保留。</string>
     <string name="read_record_delete_failed">删除阅读记录失败</string>
     <string name="read_record_books_unit">本书</string>
     <string name="read_record_recorded">已记录</string>

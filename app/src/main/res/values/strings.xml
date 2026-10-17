@@ -1630,7 +1630,8 @@
     <string name="read_record_all">All records</string>
     <string name="read_record_selected_count">Selected %1$d</string>
     <string name="read_record_delete_selected">Delete (%1$d)</string>
-    <string name="read_record_delete_selected_confirm">Delete %1$d selected reading records?</string>
+    <string name="read_record_delete_selected_confirm">Delete %1$d selected book records? Total reading time and calendar history will be kept.</string>
+    <string name="read_record_clear_books_confirm">Clear all book records? Total reading time and calendar history will be kept.</string>
     <string name="read_record_delete_failed">Unable to delete reading records</string>
     <string name="read_record_books_unit">books</string>
     <string name="read_record_recorded">Recorded</string>
