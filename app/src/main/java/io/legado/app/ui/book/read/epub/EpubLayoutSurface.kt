@@ -93,6 +93,7 @@ internal class EpubLayoutSurface(
     /** The previous page can stay visible while a new revision is being prepared. */
     val readyState: JSONObject?
         get() = state?.takeIf { !closed && it.optString("token") == revision.toString() }
+    val hasPendingScroll: Boolean get() = scrollTask != null || scrollDelta != 0f
 
     init {
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -270,7 +271,14 @@ internal class EpubLayoutSurface(
         gateway.setStyleFonts(values.flatMap { it.styleFonts.entries }.associate { it.key to it.value })
         gateway.setNineSlices(values.flatMap { it.nineSlices.entries }.associate { it.key to it.value })
         gateway.setBackgrounds(values.flatMap { it.backgrounds.entries }.associate { it.key to it.value })
-        if (container) { loaded = false; cancelPending() }
+        if (container) {
+            // Continuous windows reconcile stable document identities in JS. A new neighbour
+            // must not navigate the parent WebView and discard the visible chapter.
+            if (options.optString("containerMode") == "continuous" && loaded) {
+                startup = EpubStartupTiming("window").apply { mark("documents-updated") }
+            } else loaded = false
+            cancelPending()
+        }
         gateway.setDocumentContents(values.map { Triple(it.payload.getString("key"), it.location.path, it.html to it.payload.toString()) })
         documentOptions = JSONArray().apply { values.forEachIndexed { index, document ->
             val identity = document.payload.getString("key")
@@ -287,7 +295,9 @@ internal class EpubLayoutSurface(
             contentKey = key
             if (stagedDocument != (path to html)) {
                 stagedDocument = null
-                loaded = false
+                if (container && options.optString("containerMode") == "continuous" && loaded) {
+                    if (startup == null) startup = EpubStartupTiming("window").apply { mark("content-updated") }
+                } else loaded = false
                 cancelPending()
             }
         }
@@ -428,7 +438,7 @@ internal class EpubLayoutSurface(
     /** Compare layout inputs independently of the frame's seek and generated gateway URLs. */
     private fun preparedLayoutOptions(value: JSONObject): String {
         val layout = JSONObject(value.toString())
-        listOf("token", "page", "location", "last", "fragment", "textOffset", "spreadPage", "preservePosition",
+        listOf("token", "page", "location", "last", "fragment", "textOffset", "spreadPage", "preservePosition", "retainWindowPosition",
             "galleryIndexes", "aloud", "width", "height", "deviceWidth", "deviceHeight", "viewportFull",
             "contentUrl", "documents").forEach(layout::remove)
         listOf("readerStyle", "readerDefaults").forEach { name ->
@@ -531,8 +541,12 @@ internal class EpubLayoutSurface(
             val amount = scrollDelta
             scrollDelta = 0f
             val request = ++scrollRevision
-            webView.evaluateJavascript("$api.scrollBy($amount);$api.captureLocation()", null)
-            if (container) webView.evaluateJavascript("$api.settle()", null)
+            if (container) {
+                val value = JSONObject().put("token", token.toString()).put("request", request).put("delta", amount)
+                webView.evaluateJavascript("$api.requestScroll($value)", null)
+            } else {
+                webView.evaluateJavascript("$api.scrollBy($amount);$api.captureLocation()", null)
+            }
             readScrolledState(token, request, SystemClock.uptimeMillis() + 25_000)
         }
         scrollTask = task
@@ -541,7 +555,8 @@ internal class EpubLayoutSurface(
 
     private fun readScrolledState(token: Long, request: Long, until: Long) {
         if (closed || token != revision || request != scrollRevision) return
-        webView.evaluateJavascript("$api.state()") { raw ->
+        val query = if (container) "$api.scrollResult(${JSONObject.quote(token.toString())},$request)" else "$api.state()"
+        webView.evaluateJavascript(query) { raw ->
             if (closed || token != revision || request != scrollRevision) return@evaluateJavascript
             val report = runCatching { JSONObject(raw) }.getOrNull()
             when {
