@@ -114,7 +114,6 @@ import io.legado.app.ui.book.bookmark.AllBookmarkFilter
 import io.legado.app.ui.book.bookmark.BookmarkNoteFilter
 import io.legado.app.ui.book.bookmark.buildAllBookmarkCollection
 import io.legado.app.ui.design.components.compose.NgBottomDrawerSurface
-import io.legado.app.ui.design.components.compose.NgSideDrawerSurface
 import io.legado.app.ui.design.components.compose.NgDrawerDefaults
 import io.legado.app.ui.design.components.compose.rememberNgDrawerThemeProfile
 import io.legado.app.ui.design.components.compose.NgDrawerContentCardStyle
@@ -641,11 +640,13 @@ private fun ReadCatalogPanel(
     var visibleChapterCount by remember(chapterCount) { mutableStateOf(chapterCount) }
     val drawerThemeProfile = if (useMangaPanelTheme) null else when (visualStyle) {
         CatalogDrawerVisualStyle.READING_ORIGINAL -> null
-        CatalogDrawerVisualStyle.READING_COMPACT_SIDE -> rememberReadDrawerThemeProfile()
+        CatalogDrawerVisualStyle.READING_COMPACT_SIDE -> null
         CatalogDrawerVisualStyle.LISTENING -> rememberNgDrawerThemeProfile()
     }
     val baseSnapshot = NgTheme.snapshot
-    val drawerAppearance = if (useMangaPanelTheme) null else NgDrawerDefaults.rememberAppearance()
+    val drawerAppearance = if (!useMangaPanelTheme && visualStyle == CatalogDrawerVisualStyle.LISTENING) {
+        NgDrawerDefaults.rememberAppearance()
+    } else null
     val primaryStrength = drawerAppearance?.primaryStrengthPercent ?: 0
     val drawerColors = remember(baseSnapshot, drawerThemeProfile, primaryStrength) {
         val backgroundColor = drawerThemeProfile
@@ -954,12 +955,10 @@ private fun ReadCatalogPanel(
                         content = sideContent,
                     )
                 } else {
-                    NgSideDrawerSurface(
+                    NgGlassSurface(
                         modifier = Modifier.fillMaxHeight().width(sideWidth),
-                        appearance = requireNotNull(drawerAppearance).copy(transparencyPercent = 0),
                         shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
-                        contentCardStyle = NgDrawerContentCardStyle.ADAPTIVE,
-                        themeProfile = drawerThemeProfile,
+                        style = readFloatingGlassStyle(),
                         content = sideContent,
                     )
                 }

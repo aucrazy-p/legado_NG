@@ -15,6 +15,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.help.DefaultData
+import io.legado.app.help.book.isImage
 import io.legado.app.help.globalExecutor
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.utils.BitmapUtils
@@ -765,14 +766,35 @@ object ReadBookConfig {
             config.showFooterLine = value
         }
 
-    fun getExportConfig(): Config {
-        val exportConfig = durConfig.copy(highlightRules = ArrayList(ReadHighlightRuleStore.allRules()))
-        if (shareLayout && !onlyThisBook) {
+    fun getExportConfig(): Config = getExportConfig(
+        durConfig,
+        shareConfig.takeIf { shareLayout && !onlyThisBook },
+    )
+
+    /** Export another book's effective style without changing the active book or preset. */
+    internal fun getExportConfig(book: Book): Config {
+        val independent = bookStyle.configFor(book)
+        val selected = independent ?: getConfig(if (book.isImage) comicStyleSelect else readStyleSelect)
+        return getExportConfig(selected, shareConfig.takeIf { independent == null && shareLayout })
+    }
+
+    private fun getExportConfig(preset: Config, sharedLayout: Config?): Config {
+        val exportConfig = preset.copy(highlightRules = ArrayList(ReadHighlightRuleStore.allRules()))
+        if (sharedLayout != null) {
+            val shareConfig = sharedLayout
             exportConfig.textFont = shareConfig.textFont
             exportConfig.titleFont = shareConfig.titleFont
             exportConfig.headerFont = shareConfig.headerFont
             exportConfig.footerFont = shareConfig.footerFont
             exportConfig.headerFontSize = shareConfig.headerFontSize
+            exportConfig.headerImage = shareConfig.headerImage
+            exportConfig.headerImageEnabled = shareConfig.headerImageEnabled
+            exportConfig.headerImageWidth = shareConfig.headerImageWidth
+            exportConfig.headerImageHeight = shareConfig.headerImageHeight
+            exportConfig.footerImage = shareConfig.footerImage
+            exportConfig.footerImageEnabled = shareConfig.footerImageEnabled
+            exportConfig.footerImageWidth = shareConfig.footerImageWidth
+            exportConfig.footerImageHeight = shareConfig.footerImageHeight
             exportConfig.footerFontSize = shareConfig.footerFontSize
             exportConfig.applyHeaderStyle = shareConfig.applyHeaderStyle
             exportConfig.textBold = shareConfig.textBold
@@ -789,6 +811,8 @@ object ReadBookConfig {
             exportConfig.titleSize = shareConfig.titleSize
             exportConfig.titleTopSpacing = shareConfig.titleTopSpacing
             exportConfig.titleBottomSpacing = shareConfig.titleBottomSpacing
+            exportConfig.titleColor = shareConfig.titleColor
+            exportConfig.titleColorNight = shareConfig.titleColorNight
             exportConfig.titleBold = shareConfig.titleBold
             exportConfig.titleLineSpacingExtra = shareConfig.titleLineSpacingExtra
             exportConfig.titleLineSpacingSub = shareConfig.titleLineSpacingSub
@@ -826,6 +850,11 @@ object ReadBookConfig {
             exportConfig.tipFooterMiddle = shareConfig.tipFooterMiddle
             exportConfig.tipFooterRight = shareConfig.tipFooterRight
             exportConfig.tipColor = shareConfig.tipColor
+            exportConfig.tipHeaderColor = shareConfig.tipHeaderColor
+            exportConfig.tipHeaderColorNight = shareConfig.tipHeaderColorNight
+            exportConfig.tipFooterColor = shareConfig.tipFooterColor
+            exportConfig.tipFooterColorNight = shareConfig.tipFooterColorNight
+            exportConfig.tipDividerColor = shareConfig.tipDividerColor
             exportConfig.headerMode = shareConfig.headerMode
             exportConfig.showHeaderBackButton = shareConfig.showHeaderBackButton
             exportConfig.footerMode = shareConfig.footerMode
@@ -904,6 +933,14 @@ object ReadBookConfig {
         @SerializedName("headerFont") var headerFont: String = "",//页眉字体
         @SerializedName("footerFont") var footerFont: String = "",//页脚字体
         @SerializedName("headerFontSize") var headerFontSize: Int = 12,
+        @SerializedName("headerImage") var headerImage: String = "",
+        @SerializedName("headerImageEnabled") var headerImageEnabled: Boolean = false,
+        @SerializedName("headerImageWidth") var headerImageWidth: Int = 0,
+        @SerializedName("headerImageHeight") var headerImageHeight: Int = 0,
+        @SerializedName("footerImage") var footerImage: String = "",
+        @SerializedName("footerImageEnabled") var footerImageEnabled: Boolean = false,
+        @SerializedName("footerImageWidth") var footerImageWidth: Int = 0,
+        @SerializedName("footerImageHeight") var footerImageHeight: Int = 0,
         @SerializedName("footerFontSize") var footerFontSize: Int = 12,
         @SerializedName("applyHeaderStyle") var applyHeaderStyle: Boolean = true,
         var textBold: Int = 0,//是否粗体字 0:正常, 1:粗体, 2:细体
@@ -1371,6 +1408,14 @@ object ReadBookConfig {
             "tipColor" to tipColor,
             "tipDividerColor" to tipDividerColor,
             "headerMode" to headerMode,
+            "headerImage" to headerImage,
+            "headerImageEnabled" to headerImageEnabled,
+            "headerImageWidth" to headerImageWidth,
+            "headerImageHeight" to headerImageHeight,
+            "footerImage" to footerImage,
+            "footerImageEnabled" to footerImageEnabled,
+            "footerImageWidth" to footerImageWidth,
+            "footerImageHeight" to footerImageHeight,
             "showHeaderBackButton" to showHeaderBackButton,
             "footerMode" to footerMode
         )

@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.os.bundleOf
 import androidx.documentfile.provider.DocumentFile
 import io.legado.app.R
 import io.legado.app.base.BaseComposeDialogFragment
@@ -72,10 +73,18 @@ import java.net.URLDecoder
 /** 字体选择对话框。内容使用 Compose，目录读取与字体应用行为保持不变。 */
 class FontSelectDialog : BaseComposeDialogFragment() {
 
-    private companion object {
-        const val MODE_SYSTEM = 0
-        const val MODE_CUSTOM = 1
+    companion object {
+        private const val MODE_SYSTEM = 0
+        private const val MODE_CUSTOM = 1
+        private const val ARG_TITLE_FONT = "titleFont"
+
+        fun forTitle(): FontSelectDialog = FontSelectDialog().apply {
+            arguments = bundleOf(ARG_TITLE_FONT to true)
+        }
     }
+
+    private val isTitleFont: Boolean
+        get() = arguments?.getBoolean(ARG_TITLE_FONT) == true
 
     private val fontRegex = Regex("(?i).*\\.[ot]tf")
     private lateinit var composeView: ComposeView
@@ -141,7 +150,12 @@ class FontSelectDialog : BaseComposeDialogFragment() {
 
     @Composable
     private fun FontSelectContent() {
-        val systemNames = resources.getStringArray(R.array.system_typefaces).toList()
+        val systemNames = if (isTitleFont) {
+            listOf(getString(R.string.read_title_follow_body_font))
+        } else {
+            resources.getStringArray(R.array.system_typefaces).toList()
+        }
+        val fontTitle = getString(if (isTitleFont) R.string.read_title_font else R.string.body_font)
         ReadConfigDialogSurface(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -157,7 +171,7 @@ class FontSelectDialog : BaseComposeDialogFragment() {
                     .height(48.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                ReadConfigDialogTitle(getString(R.string.body_font))
+                ReadConfigDialogTitle(fontTitle)
             }
             Spacer(Modifier.height(8.dp))
             ReadConfigDock(
@@ -167,7 +181,7 @@ class FontSelectDialog : BaseComposeDialogFragment() {
                 ),
                 selectedIndex = fontMode,
                 onSelected = { fontMode = it },
-                accessibilityLabel = getString(R.string.body_font),
+                accessibilityLabel = fontTitle,
             )
             Spacer(Modifier.height(8.dp))
             if (fontMode == MODE_CUSTOM) {
@@ -193,7 +207,7 @@ class FontSelectDialog : BaseComposeDialogFragment() {
                                 name = name,
                                 typeface = typeface,
                                 selected = selectedFontPath.isEmpty() &&
-                                    selectedSystemFont == index,
+                                    (isTitleFont || selectedSystemFont == index),
                                 onClick = { selectSystemFont(index) },
                             )
                         }
@@ -384,7 +398,7 @@ class FontSelectDialog : BaseComposeDialogFragment() {
     private fun selectSystemFont(index: Int) {
         selectedSystemFont = index
         selectedFontPath = ""
-        AppConfig.systemTypefaces = index
+        if (!isTitleFont) AppConfig.systemTypefaces = index
         callBack?.selectFont("")
     }
 

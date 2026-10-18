@@ -650,6 +650,17 @@ Provider 试点冻结规格：
 “主题设置 > 抽屉外观”统一控制。水平边距为 0 时抽屉全宽且只保留顶部圆角；边距大于
 0 时使用完整圆角。业务页面不得再自行写死抽屉色值、透明度、外边距或圆角。
 
+阅读界面有独立的浮层外观体系：阅读样式、更多配置、阅读信息、阅读目录／书签和
+EPUB 排版沿用 `ReadDrawerStyle.themeSnapshot()` 与 `NgGlassSurface + readFloatingGlassStyle()`。
+这些阅读浮层的配色、透明度和主色强度由阅读浮层配置负责；“跟随应用配色”不代表
+导入全局抽屉主题包、背景图片或外观 profile。可复用不携带外观来源的标题、控件等
+几何组件，但不可用全局 `NgBottomDrawerSurface`／`NgSideDrawerSurface` 替换阅读承载面。
+听书播放器与漫画面板继续遵循各自已有外观分支，不在此阅读文字／EPUB 例外中统一替换。
+
+“阅读信息”和“阅读边距”使用居中弹窗，从阅读样式进入时先关闭样式抽屉，待其保存与菜单
+计数清理后再挂到 Activity 的 FragmentManager。弹窗保持自动翻页暂停，同时显示原生
+页眉页脚作为调整预览；关闭后回到正文，不重新展开样式抽屉。
+
 尚需保留 XML／View 内容的旧抽屉，通过
 `io.legado.app.ui.widget.dialog.createNgBottomDrawerViewHost` 嵌入同一
 `NgBottomDrawerSurface`；固定高度抽屉使用填满宿主模式，内容自适应短抽屉使用包裹高度模式。

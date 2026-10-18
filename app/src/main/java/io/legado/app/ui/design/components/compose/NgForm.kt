@@ -1581,6 +1581,7 @@ fun NgFormActionButton(
     minimumWidth: Dp = 76.dp,
     textSize: TextUnit = 14.sp,
     textLineHeight: TextUnit = 17.sp,
+    leadingIcon: (@Composable () -> Unit)? = null,
 ) {
     val colors = NgTheme.colors
     val primary = Color(colors.primary)
@@ -1642,6 +1643,10 @@ fun NgFormActionButton(
         ),
         contentPadding = PaddingValues(horizontal = 12.dp)
     ) {
+        leadingIcon?.let { icon ->
+            icon()
+            Spacer(Modifier.width(6.dp))
+        }
         Text(
             text = text,
             fontSize = textSize,

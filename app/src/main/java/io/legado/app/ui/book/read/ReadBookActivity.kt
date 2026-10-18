@@ -2900,13 +2900,26 @@ class ReadBookActivity : BaseReadBookActivity(),
         skipToSearch(searchResult)
     }
 
+    private var readConfigPreviewCount = 0
+
+    internal fun beginReadConfigPreview() {
+        readConfigPreviewCount++
+        onMenuShow()
+    }
+
+    internal fun endReadConfigPreview() {
+        readConfigPreviewCount = (readConfigPreviewCount - 1).coerceAtLeast(0)
+        if (menuLayoutIsVisible || readConfigPreviewCount > 0) onMenuShow() else onMenuHide()
+    }
+
     override fun onMenuShow() {
         binding.readView.autoPager.pause()
-        binding.readView.upTipVisibility(true)
+        binding.readView.upTipVisibility(readConfigPreviewCount == 0)
     }
 
     override fun onMenuHide() {
-        binding.readView.autoPager.resume()
+        if (readConfigPreviewCount == 0) binding.readView.autoPager.resume()
+        else binding.readView.autoPager.pause()
         binding.readView.upTipVisibility(false)
     }
 

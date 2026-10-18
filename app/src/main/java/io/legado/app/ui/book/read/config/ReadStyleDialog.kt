@@ -86,7 +86,10 @@ class ReadStyleDialog : BaseComposeDialogFragment(),
     private var pendingPresetExportName: String? = null
     private var preparingPresetExport = false
     private var preparingHighlightExport = false
-    private var openTipConfigAfterDismiss = false
+    private enum class PreviewDialog(val tag: String) {
+        INFORMATION("tipConfigDialog"), PADDING("paddingConfigDialog")
+    }
+    private var openPreviewAfterDismiss: PreviewDialog? = null
     private val configFileName = "readConfig.zip"
     private val selectExportDocument = registerForActivityResult(
         CreateDocumentContract("application/zip")
@@ -196,14 +199,20 @@ class ReadStyleDialog : BaseComposeDialogFragment(),
     }
 
     override fun onDismiss(dialog: DialogInterface) {
+        val destination = openPreviewAfterDismiss
+        openPreviewAfterDismiss = null
+        val manager = if (destination != null) parentFragmentManager else null
+        val host = activity
         super.onDismiss(dialog)
         ReadBookConfig.save()
         (activity as ReadBookActivity).bottomDialog--
-        if (openTipConfigAfterDismiss) {
-            openTipConfigAfterDismiss = false
-            if (!parentFragmentManager.isStateSaved) {
-                TipConfigDialog().show(parentFragmentManager, "tipConfigDialog")
-            }
+        if (destination != null && manager != null && host != null && !host.isFinishing && !host.isDestroyed &&
+            !manager.isStateSaved && manager.findFragmentByTag(destination.tag) == null
+        ) {
+            when (destination) {
+                PreviewDialog.INFORMATION -> TipConfigDialog()
+                PreviewDialog.PADDING -> PaddingConfigDialog()
+            }.show(manager, destination.tag)
         }
     }
 
@@ -377,10 +386,8 @@ class ReadStyleDialog : BaseComposeDialogFragment(),
         onFont = { showDialogFragment<FontSelectDialog>() },
         onIndent = ::showParagraphIndentSetting,
         onChineseConverter = ::showChineseConverterSetting,
-        onPadding = {
-            PaddingConfigDialog().show(childFragmentManager, "paddingConfigDialog")
-        },
-        onTip = ::showTipConfigCentered,
+        onPadding = { showConfigPreview(PreviewDialog.PADDING) },
+        onTip = { showConfigPreview(PreviewDialog.INFORMATION) },
         onTextSizeChanged = { value ->
             ReadBookConfig.textSize = value
             updateAdjustState { copy(textSize = value) }
@@ -770,9 +777,13 @@ class ReadStyleDialog : BaseComposeDialogFragment(),
         gapLength = ReadBookConfig.dottedRatio.coerceIn(1f, 20f),
     )
 
-    private fun showTipConfigCentered() {
-        if (openTipConfigAfterDismiss) return
-        openTipConfigAfterDismiss = true
+    private fun showConfigPreview(destination: PreviewDialog) {
+        val manager = parentFragmentManager
+        if (openPreviewAfterDismiss != null || manager.isStateSaved ||
+            manager.findFragmentByTag(destination.tag) != null
+        ) return
+        ReadBookConfig.save()
+        openPreviewAfterDismiss = destination
         dismiss()
     }
 
