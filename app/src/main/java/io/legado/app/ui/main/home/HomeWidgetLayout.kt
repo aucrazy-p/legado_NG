@@ -100,8 +100,8 @@ internal object HomeWidgetCatalog {
 
     fun defaults(): List<HomeWidgetInstance> = listOf(
         HomeWidgetInstance("default_updates", "updates", "story-large"),
-        HomeWidgetInstance("default_reading", "reading", "story-small"),
-        HomeWidgetInstance("default_listening", "listening", "story-small"),
+        HomeWidgetInstance("default_listening", "listening", "story-large"),
+        HomeWidgetInstance("default_reading", "reading", "story-large"),
         HomeWidgetInstance("default_calendar", "calendar", "story-large"),
     )
 }
