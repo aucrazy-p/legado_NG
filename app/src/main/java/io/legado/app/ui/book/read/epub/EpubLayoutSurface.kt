@@ -239,6 +239,9 @@ internal class EpubLayoutSurface(
         if (useContainer) onViewportRequired?.invoke(true)
         if (useContainer != container) { loaded = false; container = useContainer }
         options = JSONObject(value.toString())
+        options.put("ngNativePageDecorationCssPath", gateway.nativePageDecorationPath(
+            options.optBoolean("ngNativePageDecorations", false)) ?: JSONObject.NULL)
+        options.put("ngExportedReadStyle", gateway.hasExportedReadStyle())
         optionsReady = true
         // The resource fragment bounds the legacy chapter; it is not a new seek on every open.
         if (!options.has("fragment")) options.put("fragment", JSONObject.NULL)
@@ -306,6 +309,9 @@ internal class EpubLayoutSurface(
 
     fun restyle(value: JSONObject) {
         options = JSONObject(value.toString()).put("preservePosition", true)
+        options.put("ngNativePageDecorationCssPath", gateway.nativePageDecorationPath(
+            options.optBoolean("ngNativePageDecorations", false)) ?: JSONObject.NULL)
+        options.put("ngExportedReadStyle", gateway.hasExportedReadStyle())
         if (loaded) configure()
     }
 

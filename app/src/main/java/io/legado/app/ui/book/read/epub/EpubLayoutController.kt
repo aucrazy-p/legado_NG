@@ -16,6 +16,7 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.EpubLayoutPreferences
+import io.legado.app.model.ReadBook
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.book.read.page.entities.TextChapter
 import io.legado.app.ui.book.read.page.ContentTextView
@@ -823,6 +824,7 @@ internal class EpubLayoutController(
             .put("paragraphSpacingPx", ChapterProvider.contentPaintTextHeight * ReadBookConfig.paragraphSpacing / 10f / metrics.density)
             .put("indentPx", ChapterProvider.indentCharWidth * ReadBookConfig.paragraphIndent.length / metrics.density)
             .put("title", JSONObject()
+                .put("hidden", ReadBookConfig.titleMode == 2)
                 .put("color", EpubCharStyles.cssColor(ReadBookConfig.resolvedTitleColor))
                 .put("fontSize", ChapterProvider.titlePaint.textSize / metrics.density)
                 .put("weight", if (android.os.Build.VERSION.SDK_INT >= 28) ChapterProvider.titlePaint.typeface?.weight ?: 400
@@ -835,6 +837,10 @@ internal class EpubLayoutController(
                 .put("top", ReadBookConfig.titleTopSpacing).put("bottom", ReadBookConfig.titleBottomSpacing))
         val fixed = item?.let { publication.layoutFor(it) == EpubLayout.FIXED } ?: false
         val value = JSONObject().put("fixed", fixed)
+            // PageView owns decorations for both per-book and global reading styles.
+            .put("ngNativePageDecorations", boundBook?.let {
+                it.bookUrl == ReadBook.book?.bookUrl
+            } == true)
             .put("fullLineUnderline", if (ReadBookConfig.fullLineUnderlineEnabled) JSONObject()
                 .put("color", EpubCharStyles.cssColor(ReadBookConfig.resolvedUnderlineColor))
                 .put("width", ReadBookConfig.underlineHeight / metrics.density)

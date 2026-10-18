@@ -1,5 +1,6 @@
 package io.legado.app.model.epub
 
+import io.legado.app.help.config.EpubReadStylePackage
 import java.io.ByteArrayInputStream
 import java.io.Closeable
 import java.io.IOException
@@ -40,6 +41,10 @@ internal class EpubResourceGateway(
     @Volatile private var styleFonts: Map<String, ByteArray> = emptyMap()
     @Volatile private var nineSlices: Map<String, EpubNineSliceImage> = emptyMap()
     @Volatile private var backgrounds: Map<String, EpubBackgroundImage> = emptyMap()
+    private val exportedDecorationPath = EpubReadStylePackage.decorationLocation(session.publication)
+    /** Only this authenticated stylesheet can be disabled by native per-book decoration layout. */
+    fun nativePageDecorationPath(enabled: Boolean): String? = exportedDecorationPath.takeIf { enabled }
+    fun hasExportedReadStyle(): Boolean = EpubReadStylePackage.styleLocation(session.publication) != null
 
     fun setBackgrounds(images: Map<String, EpubBackgroundImage>) {
         require(images.all { (id, image) -> id == image.id && id.matches(Regex("[a-f0-9]{64}")) })

@@ -28,6 +28,7 @@ import io.legado.app.help.book.ExportContentImageProcessor
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.EpubReadStylePackage
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.ReadBook
 import io.legado.app.model.localBook.LocalBook
@@ -424,9 +425,11 @@ class ExportBookService : BaseService() {
         val hasCover = setCover(book, epubBook)
         //set css
         val contentModel = setAssets(fileDoc, book, epubBook, hasCover)
+        val readStyle = EpubReadStylePackage.create(book)
+        readStyle.addTo(epubBook)
 
         //设置正文
-        setEpubContent(contentModel, book, epubBook, config)
+        setEpubContent(contentModel, book, epubBook, config, readStyle)
 
         val bookDoc = fileDoc.createFileIfNotExist(filename)
         bookDoc.openOutputStream().getOrThrow().buffered().use { bookOs ->
@@ -637,6 +640,7 @@ class ExportBookService : BaseService() {
         book: Book,
         epubBook: EpubBook,
         config: ExportConfig,
+        readStyle: EpubReadStylePackage,
     ) = coroutineScope {
         //正文
         val useReplace = config.useReplace && book.getUseReplaceRule()
@@ -694,7 +698,7 @@ class ExportBookService : BaseService() {
                     replaceBook = replaceBook
                 )
             }
-            val chapterResource = ResourceUtil.createChapterResource(
+            val chapterResource = readStyle.chapter(
                 title.replace("\uD83D\uDD12", ""),
                 content1,
                 contentModel,
@@ -801,7 +805,8 @@ class ExportBookService : BaseService() {
 
             val fileDoc = FileDoc.fromDir(path)
 
-            val (contentModel, epubList) = createEpubs(book, fileDoc)
+            val readStyle = EpubReadStylePackage.create(book)
+            val (contentModel, epubList) = createEpubs(book, fileDoc, readStyle)
             var progressBar = 0.0
             epubList.forEachIndexed { index, ep ->
                 val (filename, epubBook) = ep
@@ -810,7 +815,8 @@ class ExportBookService : BaseService() {
                     contentModel,
                     book,
                     epubBook,
-                    index
+                    index,
+                    readStyle,
                 ) { _, _ ->
                     // 将章节写入内存时更新进度条
                     postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
@@ -843,6 +849,7 @@ class ExportBookService : BaseService() {
             book: Book,
             epubBook: EpubBook,
             epubBookIndex: Int,
+            readStyle: EpubReadStylePackage,
             updateProgress: (chapterList: MutableList<BookChapter>, index: Int) -> Unit
         ) {
             //正文
@@ -897,7 +904,7 @@ class ExportBookService : BaseService() {
                     }
                     epubBook.addSection(
                         title,
-                        ResourceUtil.createChapterResource(
+                        readStyle.chapter(
                             title.replace("\uD83D\uDD12", ""),
                             content1,
                             contentModel,
@@ -919,7 +926,8 @@ class ExportBookService : BaseService() {
          */
         private fun createEpubs(
             book: Book,
-            fileDoc: FileDoc
+            fileDoc: FileDoc,
+            readStyle: EpubReadStylePackage,
         ): Pair<String, List<Pair<String, EpubBook>>> {
             val paresNumOfEpub = paresNumOfEpub(scope.size, size)
             val result: MutableList<Pair<String, EpubBook>> = ArrayList(paresNumOfEpub)
@@ -936,6 +944,7 @@ class ExportBookService : BaseService() {
                 val hasCover = setCover(book, epubBook)
                 //set css
                 contentModel = setAssets(fileDoc, book, epubBook, hasCover)
+                readStyle.addTo(epubBook)
 
                 // add epubBook
                 result.add(Pair(filename, epubBook))

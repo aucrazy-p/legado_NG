@@ -19,6 +19,7 @@ import org.jsoup.Jsoup
 import splitties.init.appCtx
 import io.legado.app.ui.book.read.page.provider.ReadHighlightMatcher
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.help.config.EpubReadStylePackage
 import io.legado.app.help.book.ContentPositionMap
 
 /** One existing prepared chapter, projected onto its original documents without running rules again. */
@@ -99,7 +100,8 @@ internal class EpubPreparedContent private constructor(
                 startup.mark(if (directPositions != null) "snapshot-source-ready" else "source-ready")
                 val cached = directPositions ?: BookHelp.epubContentPositions(book, chapter.chapter, source.content, prepared.source)
                     ?: error("本章缺少可验证的正文位置记录，原编辑内容已保留，请在正文编辑器中检查")
-                val projection = EpubContentProjection(source, cached.followedBy(prepared), checkCancelled)
+                val projection = EpubContentProjection(source, cached.followedBy(prepared), checkCancelled,
+                    preserveExportedTitleOwners = EpubReadStylePackage.styleLocation(publication) != null)
                 val lines = chapter.pages.flatMap { page -> page.lines.map { line ->
                     checkCancelled()
                     EpubContentLine(line.chapterPosition, line.sourceParagraphIndex, line.text,
