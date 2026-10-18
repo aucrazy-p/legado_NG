@@ -69,12 +69,13 @@ class PaddingConfigDialog : BaseComposeDialogFragment() {
     }
 
     override fun onDismiss(dialog: DialogInterface) {
-        super.onDismiss(dialog)
         ReadBookConfig.save()
         if (previewRegistered) {
             (activity as? ReadBookActivity)?.endReadConfigPreview()
             previewRegistered = false
         }
+        super.onDismiss(dialog)
+        returnToReadStyleAdjustOnDismiss()
     }
 
     @Composable

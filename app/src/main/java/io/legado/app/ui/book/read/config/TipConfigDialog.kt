@@ -102,11 +102,12 @@ class TipConfigDialog : BaseComposeDialogFragment(), FontSelectDialog.CallBack {
 
     override fun onDismiss(dialog: DialogInterface) {
         ReadBookConfig.save()
-        super.onDismiss(dialog)
         if (previewRegistered) {
             (activity as? ReadBookActivity)?.endReadConfigPreview()
             previewRegistered = false
         }
+        super.onDismiss(dialog)
+        returnToReadStyleAdjustOnDismiss()
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {

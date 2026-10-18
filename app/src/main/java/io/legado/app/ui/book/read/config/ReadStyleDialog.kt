@@ -19,6 +19,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.toColorInt
+import androidx.core.os.bundleOf
+import androidx.fragment.app.FragmentManager
 import com.github.liuyueyi.quick.transfer.constants.TransType
 import io.legado.app.R
 import io.legado.app.base.BaseComposeDialogFragment
@@ -58,7 +60,6 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.readBytes
 import io.legado.app.utils.readUri
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import java.io.File
 import java.io.FileOutputStream
@@ -66,9 +67,31 @@ import java.util.UUID
 import kotlin.math.roundToInt
 
 private val EDITOR_FALLBACK_BG_COLOR = 0xFFF7F3EA.toInt()
+private const val ARG_INITIAL_ADJUST = "initialAdjust"
+private const val ARG_RETURN_ADJUST_BOOK = "returnAdjustBook"
+private const val ARG_RETURN_ADJUST_TAG = "returnAdjustTag"
 
-class ReadStyleDialog : BaseComposeDialogFragment(),
-    FontSelectDialog.CallBack {
+internal fun BaseComposeDialogFragment.returnToReadStyleAdjustOnDismiss() {
+    val ownerUrl = arguments?.getString(ARG_RETURN_ADJUST_BOOK) ?: return
+    val host = activity as? ReadBookActivity ?: return
+    showReadStyleAdjust(host, parentFragmentManager, ownerUrl, arguments?.getString(ARG_RETURN_ADJUST_TAG))
+}
+
+private fun showReadStyleAdjust(
+    host: ReadBookActivity,
+    manager: FragmentManager,
+    ownerUrl: String,
+    returnTag: String?,
+) {
+    if (host.isFinishing || host.isDestroyed || manager.isDestroyed || manager.isStateSaved ||
+        ReadBook.book?.bookUrl != ownerUrl || manager.fragments.any { it is ReadStyleDialog && it.isAdded }
+    ) return
+    ReadStyleDialog().apply {
+        arguments = bundleOf(ARG_INITIAL_ADJUST to true)
+    }.show(manager, returnTag ?: ReadStyleDialog::class.java.simpleName)
+}
+
+class ReadStyleDialog : BaseComposeDialogFragment() {
 
     private val callBack get() = activity as? ReadBookActivity
     private lateinit var composeView: ComposeView
@@ -87,6 +110,8 @@ class ReadStyleDialog : BaseComposeDialogFragment(),
     private var preparingPresetExport = false
     private var preparingHighlightExport = false
     private enum class PreviewDialog(val tag: String) {
+        FONT_WEIGHT("fontWeightDialog"), FONT("bodyFontDialog"),
+        INDENT("paragraphIndentDialog"), CHINESE_CONVERTER("chineseConverterDialog"),
         INFORMATION("tipConfigDialog"), PADDING("paddingConfigDialog")
     }
     private var openPreviewAfterDismiss: PreviewDialog? = null
@@ -128,6 +153,7 @@ class ReadStyleDialog : BaseComposeDialogFragment(),
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (arguments?.getBoolean(ARG_INITIAL_ADJUST) == true) page = ReadStylePage.ADJUST
         pendingHighlightExportName = savedInstanceState?.getString("pendingHighlightExportName")
         pendingPresetExportName = savedInstanceState?.getString("pendingPresetExportName")
     }
@@ -202,17 +228,39 @@ class ReadStyleDialog : BaseComposeDialogFragment(),
         val destination = openPreviewAfterDismiss
         openPreviewAfterDismiss = null
         val manager = if (destination != null) parentFragmentManager else null
-        val host = activity
+        val host = activity as? ReadBookActivity
         super.onDismiss(dialog)
         ReadBookConfig.save()
         (activity as ReadBookActivity).bottomDialog--
         if (destination != null && manager != null && host != null && !host.isFinishing && !host.isDestroyed &&
             !manager.isStateSaved && manager.findFragmentByTag(destination.tag) == null
         ) {
+            val ownerUrl = ReadBook.book?.bookUrl
+            val returnTag = tag ?: ReadStyleDialog::class.java.simpleName
+            var returnRequested = false
+            val reopenAdjust = {
+                if (!returnRequested) {
+                    returnRequested = true
+                    if (ownerUrl != null) {
+                        showReadStyleAdjust(host, manager, ownerUrl, returnTag)
+                    }
+                }
+            }
+            fun showTarget(target: BaseComposeDialogFragment) {
+                target.arguments = (target.arguments ?: Bundle()).apply {
+                    putString(ARG_RETURN_ADJUST_BOOK, ownerUrl)
+                    putString(ARG_RETURN_ADJUST_TAG, returnTag)
+                }
+                target.show(manager, destination.tag)
+            }
             when (destination) {
-                PreviewDialog.INFORMATION -> TipConfigDialog()
-                PreviewDialog.PADDING -> PaddingConfigDialog()
-            }.show(manager, destination.tag)
+                PreviewDialog.FONT_WEIGHT -> showFontWeightSetting(host, reopenAdjust)
+                PreviewDialog.FONT -> showTarget(FontSelectDialog.forReaderBody())
+                PreviewDialog.INDENT -> showParagraphIndentSetting(host, reopenAdjust)
+                PreviewDialog.CHINESE_CONVERTER -> showChineseConverterSetting(host, reopenAdjust)
+                PreviewDialog.INFORMATION -> showTarget(TipConfigDialog())
+                PreviewDialog.PADDING -> showTarget(PaddingConfigDialog())
+            }
         }
     }
 
@@ -382,10 +430,10 @@ class ReadStyleDialog : BaseComposeDialogFragment(),
             ReadBookConfig.dottedRatio = length.coerceIn(1f, 20f)
             refreshFullLineUnderlineState()
         },
-        onFontWeight = ::showFontWeightSetting,
-        onFont = { showDialogFragment<FontSelectDialog>() },
-        onIndent = ::showParagraphIndentSetting,
-        onChineseConverter = ::showChineseConverterSetting,
+        onFontWeight = { showConfigPreview(PreviewDialog.FONT_WEIGHT) },
+        onFont = { showConfigPreview(PreviewDialog.FONT) },
+        onIndent = { showConfigPreview(PreviewDialog.INDENT) },
+        onChineseConverter = { showConfigPreview(PreviewDialog.CHINESE_CONVERTER) },
         onPadding = { showConfigPreview(PreviewDialog.PADDING) },
         onTip = { showConfigPreview(PreviewDialog.INFORMATION) },
         onTextSizeChanged = { value ->
@@ -952,17 +1000,18 @@ class ReadStyleDialog : BaseComposeDialogFragment(),
         }
     }
 
-    private fun showFontWeightSetting() {
+    private fun showFontWeightSetting(host: ReadBookActivity, onDismiss: () -> Unit) {
         val weights = (100..900 step 100).toList()
-        val descriptions = resources.getStringArray(R.array.text_font_weight_levels).toList()
+        val descriptions = host.resources.getStringArray(R.array.text_font_weight_levels).toList()
         ReadTypographySettingDialog.showDiscrete(
-            context = requireContext(),
-            avoidView = composeView,
-            title = getString(R.string.text_font_weight_converter),
+            context = host,
+            avoidView = null,
+            title = host.getString(R.string.text_font_weight_converter),
             stepLabels = weights.map(Int::toString),
             currentValues = descriptions,
             selectedIndex = weights.indexOf(resolveFontWeight(ReadBookConfig.textBold))
                 .coerceAtLeast(0),
+            onDismiss = onDismiss,
             previewTypeface = { index ->
                 val weight = weights[index]
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -980,28 +1029,30 @@ class ReadStyleDialog : BaseComposeDialogFragment(),
         }
     }
 
-    private fun showParagraphIndentSetting() {
+    private fun showParagraphIndentSetting(host: ReadBookActivity, onDismiss: () -> Unit) {
         ReadTypographySettingDialog.showDiscrete(
-            context = requireContext(),
-            avoidView = composeView,
-            title = getString(R.string.paragraph_first_line_indent),
-            stepLabels = resources.getStringArray(R.array.indent_short).toList(),
-            currentValues = resources.getStringArray(R.array.indent).toList(),
+            context = host,
+            avoidView = null,
+            title = host.getString(R.string.paragraph_first_line_indent),
+            stepLabels = host.resources.getStringArray(R.array.indent_short).toList(),
+            currentValues = host.resources.getStringArray(R.array.indent).toList(),
             selectedIndex = paragraphIndentLevel(),
             currentValueTextSizeSp = 24f,
+            onDismiss = onDismiss,
         ) { index ->
             ReadBookConfig.paragraphIndent = "　".repeat(index)
             postEvent(EventBus.UP_CONFIG, arrayListOf(8, 5))
         }
     }
 
-    private fun showChineseConverterSetting() {
+    private fun showChineseConverterSetting(host: ReadBookActivity, onDismiss: () -> Unit) {
         ReadTypographySettingDialog.showChineseConverter(
-            context = requireContext(),
-            avoidView = composeView,
-            title = getString(R.string.chinese_converter),
-            labels = resources.getStringArray(R.array.chinese_mode_short).toList(),
+            context = host,
+            avoidView = null,
+            title = host.getString(R.string.chinese_converter),
+            labels = host.resources.getStringArray(R.array.chinese_mode_short).toList(),
             selectedIndex = AppConfig.chineseConverterType,
+            onDismiss = onDismiss,
         ) { index ->
             AppConfig.chineseConverterType = index
             ChineseUtils.unLoad(*TransType.entries.toTypedArray())
@@ -1462,15 +1513,6 @@ class ReadStyleDialog : BaseComposeDialogFragment(),
         return if (presetName.isBlank()) configFileName else "$presetName.zip"
     }
 
-    override val curFontPath: String
-        get() = ReadBookConfig.textFont
-
-    override fun selectFont(path: String) {
-        if (path != ReadBookConfig.textFont || path.isEmpty()) {
-            ReadBookConfig.textFont = path
-            postEvent(EventBus.UP_CONFIG, arrayListOf(2, 5))
-        }
-    }
 }
 
 private fun ReadStylePage.isPresetColorEditorPage(): Boolean = when (this) {

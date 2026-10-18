@@ -657,9 +657,12 @@ EPUB 排版沿用 `ReadDrawerStyle.themeSnapshot()` 与 `NgGlassSurface + readFl
 几何组件，但不可用全局 `NgBottomDrawerSurface`／`NgSideDrawerSurface` 替换阅读承载面。
 听书播放器与漫画面板继续遵循各自已有外观分支，不在此阅读文字／EPUB 例外中统一替换。
 
-“阅读信息”和“阅读边距”使用居中弹窗，从阅读样式进入时先关闭样式抽屉，待其保存与菜单
-计数清理后再挂到 Activity 的 FragmentManager。弹窗保持自动翻页暂停，同时显示原生
-页眉页脚作为调整预览；关闭后回到正文，不重新展开样式抽屉。
+阅读样式“调整”一排的字重、字体、缩进、简繁、边距和信息均先关闭样式抽屉，待其保存与
+菜单计数清理后再打开对应的居中弹窗。Fragment 弹窗挂到 Activity 的 FragmentManager；
+字重、缩进和简繁使用现有独立 ComponentDialog。正文字体独立处理选择结果，不能依赖已
+关闭抽屉的回调。弹窗保持自动翻页暂停，同时显示原生页眉页脚作为调整预览；关闭后保存
+修改并重新展开“调整”页，显示最新配置。内部字体目录选择器返回时只回到字体弹窗。
+Activity 退出、状态已保存或当前书籍改变时不重新展开，避免弹窗被错误恢复。
 
 尚需保留 XML／View 内容的旧抽屉，通过
 `io.legado.app.ui.widget.dialog.createNgBottomDrawerViewHost` 嵌入同一
