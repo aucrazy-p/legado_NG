@@ -64,16 +64,16 @@ class HomeWidgetLayoutTest {
     }
 
     @Test
-    fun everyModuleOffersTheSameThreeStyleFamiliesForItsAvailableSizes() {
+    fun everyModuleOffersTheSameFourStyleFamiliesForItsAvailableSizes() {
         HomeWidgetCatalog.types.forEach { type ->
             type.variants.map { it.size }.distinct().forEach { size ->
                 val choices = HomeWidgetCatalog.variantsForSize(type.id, size)
-                assertEquals(listOf("basic", "storybook", "night"), choices.map { it.styleId })
+                assertEquals(listOf("basic", "storybook", "night", "white"), choices.map { it.styleId })
                 assertTrue(choices.all { it.size == size })
             }
         }
         assertEquals(
-            listOf("small", "large", "story-small", "story-large", "night-small", "night-large"),
+            listOf("small", "large", "story-small", "story-large", "night-small", "night-large", "white-small", "white-large"),
             HomeWidgetCatalog.type("listening")!!.variants.map { it.id },
         )
         assertEquals(null, HomeWidgetCatalog.variantForSize("unknown", "small", HomeWidgetSize.LARGE))
@@ -128,7 +128,7 @@ class HomeWidgetLayoutTest {
     @Test
     fun updatesSkinsKeepBothSizesAndPreserveTheExistingLayoutContract() {
         val variants = HomeWidgetCatalog.type("updates")!!.variants
-        assertEquals(listOf("small", "large", "story-small", "story-large", "night-small", "night-large"),
+        assertEquals(listOf("small", "large", "story-small", "story-large", "night-small", "night-large", "white-small", "white-large"),
             variants.map { it.id })
         val original = HomeWidgetCatalog.defaults()
         variants.forEach { variant ->
@@ -162,6 +162,22 @@ class HomeWidgetLayoutTest {
             assertEquals(changed, HomeWidgetLayoutCodec.decode(HomeWidgetLayoutCodec.encode(changed)))
         }
         assertEquals(listOf("story-large", "story-small", "story-small", "story-large"), HomeWidgetCatalog.defaults().map { it.variantId })
+    }
+
+    @Test
+    fun brightWhiteSupportsEveryExistingSizeWithoutAddingASmallCalendar() {
+        val widgets = HomeWidgetCatalog.types.flatMap { type ->
+            val whiteVariants = type.variants.filter { it.styleId == "white" }
+            val expectedSizes = if (type.id == "calendar") listOf(HomeWidgetSize.LARGE)
+                else listOf(HomeWidgetSize.SMALL, HomeWidgetSize.LARGE)
+            assertEquals(expectedSizes, whiteVariants.map { it.size })
+            whiteVariants.map { variant ->
+                HomeWidgetInstance("${type.id}-${variant.id}", type.id, variant.id)
+            }
+        }
+        assertEquals(widgets, HomeWidgetLayoutCodec.decode(HomeWidgetLayoutCodec.encode(widgets)))
+        assertEquals(listOf("story-large", "story-small", "story-small", "story-large"),
+            HomeWidgetCatalog.defaults().map { it.variantId })
     }
 
     @Test
