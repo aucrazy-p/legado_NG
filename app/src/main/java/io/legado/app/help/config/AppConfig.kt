@@ -659,6 +659,15 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val readAloudMultiRole: Boolean
         get() = readAloudScenarioMode == 1
 
+    /**
+     * 多人朗读即时起播：先用本地规则分镜 + 默认音色出声，AI 分镜在后台生成后按段落边界接管。
+     */
+    var readAloudInstantStart: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.readAloudInstantStart, true)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.readAloudInstantStart, value)
+        }
+
     val showListeningCapsuleOnMain: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.showListeningCapsuleOnMain, false)
 

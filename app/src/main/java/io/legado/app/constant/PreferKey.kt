@@ -69,6 +69,7 @@ object PreferKey {
     const val ttsFollowSys = "ttsFollowSys"
     const val ttsSpeechRate = "ttsSpeechRate"
     const val readAloudScenarioMode = "readAloudScenarioMode"
+    const val readAloudInstantStart = "readAloudInstantStart"
     const val showListeningCapsuleOnMain = "showListeningCapsuleOnMain"
     const val listeningMotionEnabled = "listeningMotionEnabled"
     const val listeningMotionEffect = "listeningMotionEffect"

@@ -93,7 +93,8 @@ android {
             if (hasReleaseSigning) {
                 signingConfig signingConfigs.myConfig
             }
-            applicationIdSuffix '.release'
+            // 验证期使用独立包名，可与官方版共存、不动现有数据；验证完成后改回 '.release'。
+            applicationIdSuffix '.rc'
             manifestPlaceholders.put("app_name", "@string/app_name")
 
             minifyEnabled true

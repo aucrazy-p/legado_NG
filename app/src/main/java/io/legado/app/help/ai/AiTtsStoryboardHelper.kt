@@ -31,9 +31,11 @@ import io.legado.app.utils.getPrefBoolean
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -140,6 +142,11 @@ object AiTtsStoryboardHelper {
     private val inFlightRequests = hashMapOf<String, CompletableDeferred<GenerateResult>>()
     private val cachedEnrichmentScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val cachedEnrichmentMutex = Mutex()
+
+    /**
+     * 即时起播的后台补全必须独立于播放协程：播放被取消、切章都不影响它继续生成并落盘缓存。
+     */
+    private val instantUpgradeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val cachedEnrichmentJobs = ConcurrentHashMap<String, Job>()
 
     suspend fun getOrGenerate(
@@ -328,6 +335,82 @@ object AiTtsStoryboardHelper {
                 }
             }
         }
+    }
+
+    internal data class InstantStoryboard(
+        val storyboard: ChapterStoryboard,
+        val fallback: Boolean,
+        val upgrade: Deferred<ChapterStoryboard?>?
+    )
+
+    /**
+     * 即时起播入口。缓存命中就沿用改造前的缓存路径；未命中则立刻返回本地规则兜底分镜，
+     * 真分镜放到后台生成（照常写三层缓存），生成完由播放侧按段落边界接管后续段落。
+     */
+    suspend fun getOrGenerateInstant(
+        book: Book,
+        chapterIndex: Int,
+        chapterTitle: String,
+        content: String,
+        characters: List<BookCharacter>
+    ): InstantStoryboard? {
+        if (content.isBlank()) return null
+        val request = buildRequest(book, chapterIndex, chapterTitle, content, characters)
+        val cacheFile = cacheFile(request)
+        val cached = cacheMutex.withLock {
+            loadMemoryCache(request)
+                ?: loadCache(cacheFile, request)?.let {
+                    persistRequestIdentity(it, request, cacheFile)
+                }
+                ?: loadCompatibleCache(request)?.let {
+                    persistRequestIdentity(it, request, cacheFile)
+                }
+                ?: loadLayeredCache(request)?.let {
+                    persistRequestIdentity(it, request, cacheFile)
+                }
+        }
+        if (cached != null) {
+            val storyboard = BookTtsCastingCoordinator.prepareCached(
+                book = book,
+                storyboard = cached.toChapterStoryboard(),
+                characters = characters
+            )
+            val preparedCache = persistPreparedStoryboard(request, cacheFile, cached, storyboard)
+            scheduleCachedEnrichment(
+                request = request,
+                cacheFile = cacheFile,
+                cache = preparedCache,
+                book = book,
+                storyboard = storyboard,
+                characters = characters
+            )
+            return InstantStoryboard(storyboard = storyboard, fallback = false, upgrade = null)
+        }
+        val fallback = LocalStoryboardFallback.build(
+            book = book,
+            chapterIndex = chapterIndex,
+            chapterTitle = chapterTitle,
+            content = content,
+            characters = characters
+        ) ?: return null
+        val upgrade = instantUpgradeScope.async {
+            runCatching {
+                getOrGenerate(
+                    book = book,
+                    chapterIndex = chapterIndex,
+                    chapterTitle = chapterTitle,
+                    content = content,
+                    characters = characters
+                )
+            }.onFailure { error ->
+                if (error is CancellationException) throw error
+                io.legado.app.constant.AppLog.put(
+                    "AI听书分镜后台生成失败，已继续使用本地兜底分镜\n${error.localizedMessage}",
+                    error
+                )
+            }.getOrNull()
+        }
+        return InstantStoryboard(storyboard = fallback, fallback = true, upgrade = upgrade)
     }
 
     suspend fun loadCachedOrMemory(
@@ -1148,7 +1231,7 @@ object AiTtsStoryboardHelper {
         })
     }
 
-    private fun findQuoteSpans(text: String): List<UnitSpan> {
+    internal fun findQuoteSpans(text: String): List<UnitSpan> {
         val spans = arrayListOf<UnitSpan>()
         var index = 0
         while (index < text.length) {
@@ -1177,7 +1260,7 @@ object AiTtsStoryboardHelper {
             ?: -1
     }
 
-    private fun findColonUnits(text: String, quoteSpans: List<UnitSpan>): List<UnitSpan> {
+    internal fun findColonUnits(text: String, quoteSpans: List<UnitSpan>): List<UnitSpan> {
         val results = arrayListOf<UnitSpan>()
         val quoteMask = BooleanArray(text.length)
         quoteSpans.forEach { span ->
@@ -1219,6 +1302,17 @@ object AiTtsStoryboardHelper {
             index = speechEnd
         }
         return results
+    }
+
+    /**
+     * 即时起播用的纯本地切分：只跑引号 / 冒号规则，不产生任何网络请求。
+     * 返回结果按 [UnitSpan.start] 升序，供 LocalStoryboardFallback 拼装兜底分镜。
+     */
+    internal fun localTextSpans(text: String): List<UnitSpan> {
+        if (text.isBlank()) return emptyList()
+        val quotes = findQuoteSpans(text)
+        val colons = findColonUnits(text, quotes)
+        return (quotes + colons).sortedBy { it.start }
     }
 
     private fun isRatioOrTimeColon(text: String, index: Int): Boolean {
@@ -2844,7 +2938,7 @@ object AiTtsStoryboardHelper {
             ?.contains(AiModelAbility.REASONING) == true
     }
 
-    private data class UnitSpan(
+    internal data class UnitSpan(
         val start: Int,
         val end: Int,
         val kind: String,

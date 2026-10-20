@@ -109,6 +109,9 @@ import java.util.concurrent.atomic.AtomicInteger
 
 private const val SILENT_SOUND_FILE_SIZE = 2160L
 
+/** 即时起播期间轮询后台分镜是否完成的间隔。 */
+private const val INSTANT_UPGRADE_POLL_MS = 250L
+
 /**
  * 在线朗读
  */
@@ -482,8 +485,17 @@ class HttpReadAloudService : BaseReadAloudService(),
             if (engineV2 == null) {
                 throw NoStackTraceException("tts is null")
             }
-                val storyboard = try {
-                    prefetchedPlan?.storyboard ?: loadCurrentAiStoryboard()
+                val instant = try {
+                    val prefetchedStoryboard = prefetchedPlan?.storyboard
+                    if (prefetchedStoryboard != null) {
+                        AiTtsStoryboardHelper.InstantStoryboard(
+                            storyboard = prefetchedStoryboard,
+                            fallback = false,
+                            upgrade = null
+                        )
+                    } else {
+                        loadCurrentAiStoryboard()
+                    }
                 } catch (error: Throwable) {
                     if (error is CancellationException) throw error
                     playlistProductionState.cancel(productionToken)
@@ -495,6 +507,9 @@ class HttpReadAloudService : BaseReadAloudService(),
                     pauseReadAloud()
                     return@execute
                 }
+                val storyboard = instant?.storyboard
+                // 本地兜底分镜起播时，真分镜仍在后台生成，完成后在段落边界接管后续段落。
+                val storyboardUpgrade = instant?.takeIf { it.fallback }?.upgrade
                 try {
                     ensurePlaybackVoiceBindings(showPreparation = !seamlessHandoff)
                 } catch (error: Throwable) {
@@ -578,54 +593,71 @@ class HttpReadAloudService : BaseReadAloudService(),
                 }
                 var currentNextAudioPreloadJob: Job? = null
                 try {
-                    prepareSpeakFilesConcurrently(
-                        engineV2 = engineV2,
-                        items = currentSpeakItems.drop(cachedPrefix.size),
-                        router = currentRouter,
-                        routeWarningTracker = routeWarningTracker
-                    ) { audio ->
-                        withContext(Main) {
-                            if (!playlistProductionState.isCurrent(productionToken)) {
-                                return@withContext
+                    // 本地兜底分镜起播时，真分镜还在后台生成；这里边合成边等它，
+                    // 一旦生成完成就停在段落边界接管后续段落，已经播出去的音频不回滚。
+                    var upgradeHandled = storyboardUpgrade == null
+                    while (true) {
+                        // 队列与 item 快照必须在同一次主线程执行里取，避免接管中途替换尾部导致错位。
+                        val snapshot = withContext(Main) {
+                            speakItems to exoPlayer.mediaItemCount
+                        }
+                        val currentItems = snapshot.first
+                        val synthesizedCount = snapshot.second
+                        if (synthesizedCount >= currentItems.size) {
+                            if (upgradeHandled) break
+                            val upgrade = storyboardUpgrade
+                            if (upgrade == null) {
+                                upgradeHandled = true
+                                break
                             }
-                            val nextIndex = exoPlayer.mediaItemCount
-                            val wasPlaylistEmpty = nextIndex == 0
-                            val preparedItem = currentSpeakItems.getOrNull(nextIndex)
-                                ?: return@withContext
-                            preparedReadAloudChapterPosition(
-                                paragraphStarts = paragraphStarts,
-                                paragraphIndex = preparedItem.paragraphIndex,
-                                preparedEnd = preparedItem.end
-                            )?.let(::upTtsBufferProgress)
-                            exoPlayer.addMediaItem(
-                                buildSpeakMediaItem(
-                                    file = audio.file,
-                                    profile = audio.profile,
-                                    generation = productionToken,
-                                    itemIndex = nextIndex,
-                                    item = preparedItem
+                            val real = runCatching { upgrade.await() }.getOrNull()
+                            upgradeHandled = true
+                            if (real != null) {
+                                val resumeAt = applyStoryboardTakeover(real, productionToken)
+                                if (resumeAt != null) continue
+                            }
+                            break
+                        }
+                        val pendingItems = currentItems.drop(synthesizedCount)
+                        if (pendingItems.isEmpty()) break
+                        val synthesisJob = launch {
+                            prepareSpeakFilesConcurrently(
+                                engineV2 = engineV2,
+                                items = pendingItems,
+                                router = ttsRouter,
+                                routeWarningTracker = routeWarningTracker
+                            ) { audio ->
+                                appendPreparedSpeakAudio(
+                                    audio = audio,
+                                    productionToken = productionToken,
+                                    paragraphStarts = paragraphStarts
                                 )
-                            )
-                            when (readAloudPlaylistAppendAction(
-                                resumeProductionGap = playlistProductionState.onItemAppended(
-                                    productionToken
-                                ),
-                                wasPlaylistEmpty = wasPlaylistEmpty,
-                                playbackIdle = exoPlayer.playbackState == Player.STATE_IDLE
-                            )) {
-                                ReadAloudPlaylistAppendAction.RESUME -> {
-                                    applyPlaybackProfile(audio.profile)
-                                    exoPlayer.seekTo(nextIndex, 0L)
-                                    exoPlayer.prepare()
-                                }
-                                ReadAloudPlaylistAppendAction.START -> {
-                                    applyPlaybackProfile(audio.profile)
-                                    exoPlayer.seekTo(0, 0L)
-                                    exoPlayer.prepare()
-                                }
-                                ReadAloudPlaylistAppendAction.NONE -> Unit
                             }
                         }
+                        if (!upgradeHandled) {
+                            val upgrade = storyboardUpgrade
+                            if (upgrade == null) {
+                                upgradeHandled = true
+                            } else {
+                                while (synthesisJob.isActive && !upgrade.isCompleted) {
+                                    delay(INSTANT_UPGRADE_POLL_MS)
+                                }
+                                if (upgrade.isCompleted && synthesisJob.isActive) {
+                                    synthesisJob.cancel()
+                                    synthesisJob.join()
+                                    val real = runCatching { upgrade.await() }.getOrNull()
+                                    upgradeHandled = true
+                                    if (real != null) {
+                                        applyStoryboardTakeover(real, productionToken)
+                                    }
+                                    continue
+                                }
+                            }
+                        }
+                        synthesisJob.join()
+                        if (synthesisJob.isCancelled) break
+                        // 合成正常跑完却没有推进队列入度（例如条目被静音过滤），避免空转。
+                        if (withContext(Main) { exoPlayer.mediaItemCount } <= synthesizedCount) break
                     }
                     currentNextAudioPreloadJob = nextStoryboardTask?.let { preloadTask ->
                         lifecycleScope.launch(IO) {
@@ -1058,6 +1090,101 @@ class HttpReadAloudService : BaseReadAloudService(),
         prepareReadAloudAudioTasks(tasks, globalConcurrency, onPrepared)
     }
 
+    /**
+     * 把一条已合成好的音频追加到播放队列。分镜接管会替换 [speakItems] 的尾部，
+     * 所以这里必须按当前下标读最新列表，而不能用合成启动时的快照。
+     */
+    private suspend fun appendPreparedSpeakAudio(
+        audio: PreparedSpeakAudio,
+        productionToken: Long,
+        paragraphStarts: List<Int>
+    ) = withContext(Main) {
+        if (!playlistProductionState.isCurrent(productionToken)) {
+            return@withContext
+        }
+        val nextIndex = exoPlayer.mediaItemCount
+        val wasPlaylistEmpty = nextIndex == 0
+        val preparedItem = speakItems.getOrNull(nextIndex) ?: return@withContext
+        preparedReadAloudChapterPosition(
+            paragraphStarts = paragraphStarts,
+            paragraphIndex = preparedItem.paragraphIndex,
+            preparedEnd = preparedItem.end
+        )?.let(::upTtsBufferProgress)
+        exoPlayer.addMediaItem(
+            buildSpeakMediaItem(
+                file = audio.file,
+                profile = audio.profile,
+                generation = productionToken,
+                itemIndex = nextIndex,
+                item = preparedItem
+            )
+        )
+        when (readAloudPlaylistAppendAction(
+            resumeProductionGap = playlistProductionState.onItemAppended(productionToken),
+            wasPlaylistEmpty = wasPlaylistEmpty,
+            playbackIdle = exoPlayer.playbackState == Player.STATE_IDLE
+        )) {
+            ReadAloudPlaylistAppendAction.RESUME -> {
+                applyPlaybackProfile(audio.profile)
+                exoPlayer.seekTo(nextIndex, 0L)
+                exoPlayer.prepare()
+            }
+
+            ReadAloudPlaylistAppendAction.START -> {
+                applyPlaybackProfile(audio.profile)
+                exoPlayer.seekTo(0, 0L)
+                exoPlayer.prepare()
+            }
+
+            ReadAloudPlaylistAppendAction.NONE -> Unit
+        }
+    }
+
+    /**
+     * 用后台生成的真分镜接管「当前正在播的段落之后」的全部内容。
+     *
+     * 只允许在段落边界切分：正在播的段落连同它剩余的片段整体保留，之后已经入队但还没播到的
+     * 条目会被移除并按真分镜重新合成。这样已播内容不回滚，段落不会被重复朗读或漏读。
+     *
+     * @return 接管后应继续合成的起始 item 下标；返回 null 表示放弃接管（此时 speakItems 不变）。
+     */
+    private suspend fun applyStoryboardTakeover(
+        real: ChapterStoryboard,
+        productionToken: Long
+    ): Int? = withContext(Main) {
+        if (!playlistProductionState.isCurrent(productionToken)) return@withContext null
+        if (playlistChapterIndex != ReadBook.durChapterIndex) return@withContext null
+        val currentIndex = exoPlayer.currentMediaItemIndex
+        if (currentIndex < 0 || currentIndex >= speakItems.size) return@withContext null
+        val currentParagraph = speakItems[currentIndex].paragraphIndex
+        // 已经读到章节后段时接管收益抵不过重新合成的等待，直接放弃，等下次走缓存。
+        val lastParagraph = speakItems.lastOrNull()?.paragraphIndex ?: currentParagraph
+        if (lastParagraph > currentParagraph && currentParagraph * 3 >= lastParagraph * 2) {
+            return@withContext null
+        }
+        val keepUntil = speakItems.indexOfLast { it.paragraphIndex <= currentParagraph } + 1
+        if (keepUntil >= speakItems.size) return@withContext null
+        val newTail = buildSpeakItemsForContent(
+            paragraphs = contentList,
+            storyboard = real,
+            startParagraphIndex = currentParagraph + 1,
+            maxItems = Int.MAX_VALUE,
+            sourceChapter = textChapter
+        )
+        if (newTail.isEmpty()) return@withContext null
+        val queued = exoPlayer.mediaItemCount
+        if (queued > keepUntil) {
+            exoPlayer.removeMediaItems(keepUntil, queued)
+        }
+        speakItems = speakItems.take(keepUntil) + newTail
+        ttsRouter = ReadAloudTtsRouter.createForCurrentBook() ?: ttsRouter
+        AppLog.putDebug(
+            "AI听书即时起播接管：自第 ${currentParagraph + 1} 段起改用真分镜" +
+                "，保留 $keepUntil 条，新增 ${newTail.size} 条"
+        )
+        keepUntil
+    }
+
     private suspend fun prepareSpeakFileWithFallback(
         engineV2: TtsEngineSetting,
         item: SpeakItem,
@@ -1331,7 +1458,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         }
     }
 
-    private suspend fun loadCurrentAiStoryboard(): ChapterStoryboard? {
+    private suspend fun loadCurrentAiStoryboard(): AiTtsStoryboardHelper.InstantStoryboard? {
         if (!AppConfig.readAloudMultiRole) {
             return null
         }
@@ -1341,13 +1468,29 @@ class HttpReadAloudService : BaseReadAloudService(),
             .takeIf { it.isNotBlank() } ?: return null
         val workKey = BookCharacterProfile.workKey(book.name, book.author)
         val characters = appDb.bookCharacterDao.getCharacters(workKey)
+        val chapterIndex = ReadBook.durChapterIndex
+        if (AppConfig.readAloudInstantStart) {
+            AiTtsStoryboardHelper.getOrGenerateInstant(
+                book = book,
+                chapterIndex = chapterIndex,
+                chapterTitle = chapter.title,
+                content = content,
+                characters = characters
+            )?.let { return it }
+        }
         return AiTtsStoryboardHelper.getOrGenerate(
             book = book,
-            chapterIndex = ReadBook.durChapterIndex,
+            chapterIndex = chapterIndex,
             chapterTitle = chapter.title,
             content = content,
             characters = characters
-        )
+        )?.let {
+            AiTtsStoryboardHelper.InstantStoryboard(
+                storyboard = it,
+                fallback = false,
+                upgrade = null
+            )
+        }
     }
 
     private fun startNextStoryboardPreload(): Deferred<ChapterStoryboard?>? {
