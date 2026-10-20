@@ -37,6 +37,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
+import io.legado.app.help.tts.LocalStoryboardFallback
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -347,7 +348,7 @@ object AiTtsStoryboardHelper {
      * 即时起播入口。缓存命中就沿用改造前的缓存路径；未命中则立刻返回本地规则兜底分镜，
      * 真分镜放到后台生成（照常写三层缓存），生成完由播放侧按段落边界接管后续段落。
      */
-    suspend fun getOrGenerateInstant(
+    internal suspend fun getOrGenerateInstant(
         book: Book,
         chapterIndex: Int,
         chapterTitle: String,
