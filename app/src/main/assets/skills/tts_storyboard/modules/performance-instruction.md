@@ -2,7 +2,7 @@
 
 当前引擎支持演员层。在场景上下文之上，为 `character` 和 `thought` 生成一句可直接交给演员执行的 `performanceInstruction`。
 
-每个输出 unit 都必须包含 `performanceInstruction` 字符串。启用演员层时，`character` 和 `thought` 必须返回一句简短指导；`narrator` 和 `other` 使用空字符串。
+`character` 和 `thought` 必须返回一句简短指导；`narrator` 和 `other` 省略该字段，不要输出空字符串。
 
 演员层填充公共协议固定 unit 结构中的 `performanceInstruction`；其它公共字段保持原义：
 
@@ -18,7 +18,6 @@
   "nameType": "generic_label",
   "identityEvidence": "contextual",
   "genderEvidence": "explicit",
-  "mergeCastRoleIds": [],
   "status": "unknown",
   "confidence": 0.88,
   "evidence": "前文动作: 角色名",
@@ -39,7 +38,7 @@
 
 演员层的作用是保证每句人物声音都有明确演法，不能把普通问答、日常陈述或短句留成裸正文。没有强烈情绪时，写清交流方式和目的，例如“自然询问，直接但不施压”“温和笃定地安抚，让对方安心”“平静说明，重点处稍作强调”；不要为了填字段虚构哭腔、愤怒或其它原文没有的强烈表现。
 
-每句 4～40 个字符，不加入新台词、拟声词或正文内容，不指定供应商参数。不要重复台词中已经直接表达的结巴、省略或停顿，不要只写泛化的“语速适中”“语气自然”；中性对白也必须补充交流目的或关系姿态。`narrator` 和 `other` 返回空字符串。
+每句 4～40 个字符，不加入新台词、拟声词或正文内容，不指定供应商参数。不要重复台词中已经直接表达的结巴、省略或停顿，不要只写泛化的“语速适中”“语气自然”；中性对白也必须补充交流目的或关系姿态。`narrator` 和 `other` 省略该字段。
 
 演员层输出示例字段：
 

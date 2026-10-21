@@ -16,4 +16,4 @@
 10. 后文通过“我叫阿糯”等直接证据揭示某人就是已有待确认说话人时，沿用原 `castRoleId`，`characterName` 改为规范名称，输出 `nameType=proper_name`、`identityEvidence=explicit`；客户端会把旧描述称呼保留为别称并将待确认身份晋级。原记录与规范身份本来就是同一个 `castRoleId` 时，`mergeCastRoleIds` 留空；只有此前错误形成了两个不同 ID 且正文有直接同一人证据时，才把被并入的旧 ID 写入 `mergeCastRoleIds`。不得在已有 ID 上照抄历史的 `generic_label/contextual/unknown`，从而丢掉本章的新证据。
 11. `stable_candidate` 和 `pending` 必须有非空称呼；性别只在正文有可靠依据时返回 `male/female`，否则返回 `unknown`。性别证据可以来自紧邻的称呼关系，例如沈棠对已有待确认身份说“小妹妹你以后会……”，下一句明确由该身份回答，则该回答必须输出 `speakerGender=female`、`genderEvidence=explicit`，`evidence` 中注明 `称呼“小妹妹”`，不能因为历史记录是 `unknown` 而继续照抄。反过来，“道童”“师父”“徒弟”、姓名、姓氏和道号都不是男性证据；本章只有“我叫阿糯”“姓陆”等信息时不得输出 `male/explicit`。凡 `genderEvidence=explicit`，`evidence` 必须引用正文中的明确性别词、代词或关系称呼；找不到可引用的原文线索就返回 `unknown`。输出前单独复核每个 `male/female` 是否满足此规则。`guest` 能确认性别时继续作为人物声音走对白兜底。只有无法确认这是人物声音时才按旁白处理，不得因为性别未知而吞掉已确认的对白。
 
-`assigned` 表示命中已有正式角色或临时身份，`unknown` 表示已确认是人物声音但尚未绑定稳定身份。基础归因层的 `performanceContext` 始终为空数组。
+`assigned` 表示命中已有正式角色或临时身份，`unknown` 表示已确认是人物声音但尚未绑定稳定身份。基础归因层的 `performanceContext` 省略该字段。

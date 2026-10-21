@@ -552,6 +552,93 @@ class AiTtsStoryboardHelperTest {
         }
     """.trimIndent()
 
+    @Test
+    fun narratorUnitMayOmitEveryFieldExceptIdRoleAndStatus() {
+        val raw = """
+            {
+              "units": [{
+                "unitId": "u2",
+                "roleType": "narrator",
+                "status": "unknown"
+              }],
+              "newCharacters": []
+            }
+        """.trimIndent()
+
+        val unit = AiTtsStoryboardHelper.parseAndValidateForTest(
+            raw = raw,
+            targetUnits = listOf(
+                AiTtsStoryboardHelper.CandidateUnit(
+                    unitId = "u2",
+                    roleHint = "narrator",
+                    textPreview = "他推开门走进房间。"
+                )
+            ),
+            capabilities = emptyList(),
+            allowNewCharacters = false
+        ).single()
+
+        assertEquals("narrator", unit.roleType)
+        assertEquals("", unit.characterName)
+        assertEquals(0L, unit.characterId)
+        assertEquals(0L, unit.castRoleId)
+        assertEquals(StoryboardSegment.SpeakerGender.UNKNOWN, unit.speakerGender)
+        assertEquals(StoryboardSegment.IdentityType.NONE, unit.identityType)
+        assertEquals(emptyList<Long>(), unit.mergeCastRoleIds)
+        assertEquals("unknown", unit.status)
+        assertEquals("", unit.evidence)
+        assertEquals(emptyList<String>(), unit.performanceContext)
+        assertEquals("", unit.performanceInstruction)
+        assertEquals(emptyList<String>(), unit.styleConcepts)
+        assertEquals(null, unit.emotion)
+        assertEquals(null, unit.emotionIntensity)
+        assertEquals(null, unit.expressiveConfidence)
+    }
+
+    @Test
+    fun characterUnitMayOmitFieldsThatWouldOnlyHoldEmptyValues() {
+        val raw = """
+            {
+              "units": [{
+                "unitId": "u1",
+                "roleType": "character",
+                "status": "assigned",
+                "characterName": "沈棠",
+                "speakerGender": "female",
+                "identityType": "stable_candidate",
+                "nameType": "proper_name",
+                "identityEvidence": "explicit",
+                "genderEvidence": "explicit",
+                "confidence": 0.9,
+                "evidence": "旁白点名称呼沈棠"
+              }],
+              "newCharacters": []
+            }
+        """.trimIndent()
+
+        val unit = AiTtsStoryboardHelper.parseAndValidateForTest(
+            raw = raw,
+            targetUnits = listOf(
+                AiTtsStoryboardHelper.CandidateUnit(
+                    unitId = "u1",
+                    roleHint = "character",
+                    textPreview = "“我明白。”"
+                )
+            ),
+            capabilities = emptyList(),
+            allowNewCharacters = false
+        ).single()
+
+        assertEquals("沈棠", unit.characterName)
+        assertEquals(StoryboardSegment.SpeakerGender.FEMALE, unit.speakerGender)
+        assertEquals(StoryboardSegment.IdentityType.STABLE_CANDIDATE, unit.identityType)
+        assertEquals(emptyList<Long>(), unit.mergeCastRoleIds)
+        assertEquals(emptyList<String>(), unit.performanceContext)
+        assertEquals("", unit.performanceInstruction)
+        assertEquals(emptyList<String>(), unit.styleConcepts)
+        assertEquals(null, unit.emotion)
+    }
+
     private fun quoteHint(text: String): String {
         val start = text.indexOf('“')
         val end = text.indexOf('”', start + 1) + 1
