@@ -547,7 +547,7 @@ class TtsHttpForwarderClientTest {
     fun microsoftTranslatorChineseCatalogUpdatePreservesUserSettings() {
         val builtIn = scriptEngineFromAssetFile("microsoft_translator.js")
         val saved = builtIn.copy(
-            script = builtIn.script.replaceFirst("// @version 1.0.2", "// @version 1.0.1"),
+            script = builtIn.script.replaceFirst("// @version 1.0.3", "// @version 1.0.2"),
             name = "我的微软翻译",
             enabled = false,
             activeVoiceId = "zh-CN-XiaoxiaoNeural",
@@ -557,12 +557,58 @@ class TtsHttpForwarderClientTest {
         val updated = TtsEngineStore.updateDefaultScriptForTest(saved, builtIn)
 
         assertEquals(builtIn.script, updated.script)
-        assertTrue(updated.script.contains("// @version 1.0.2"))
+        assertTrue(updated.script.contains("// @version 1.0.3"))
         assertEquals(saved.name, updated.name)
         assertEquals(saved.enabled, updated.enabled)
         assertEquals(saved.activeVoiceId, updated.activeVoiceId)
         assertEquals(saved.optionValues, updated.optionValues)
         assertFalse(TtsEngineStore.preservesVoiceCatalogOnDefaultUpgrade(saved, updated))
+    }
+
+    @Test
+    fun microsoftTranslatorStaticCatalogSeparatesDialectsFromMandarin() {
+        val engine = scriptEngineFromAssetFile("microsoft_translator.js")
+        val context = Context.enter()
+        val (mandarin, allZh) = try {
+            context.optimizationLevel = -1
+            context.languageVersion = Context.VERSION_ES6
+            val scope = context.initStandardObjects()
+            context.evaluateString(scope, engine.script, "microsoft_translator.js", 1, null)
+            fun idsOf(js: String): List<String> = Context.toString(
+                context.evaluateString(scope, js, "catalog", 1, null)
+            ).split("|").filter { it.isNotBlank() }
+            idsOf(
+                """
+                (function() {
+                    var list = voices({voiceScope: 'mandarin'});
+                    var ids = [];
+                    for (var i = 0; i < list.length; i++) ids.push(list[i].id);
+                    return ids.join('|');
+                })();
+                """.trimIndent()
+            ) to idsOf(
+                """
+                (function() {
+                    var list = voices({voiceScope: 'allZh'});
+                    var ids = [];
+                    for (var i = 0; i < list.length; i++) ids.push(list[i].id);
+                    return ids.join('|');
+                })();
+                """.trimIndent()
+            )
+        } finally {
+            Context.exit()
+        }
+
+        // 普通话默认目录保持作者精选集：剔除方言发音人，云希仍是首项。
+        assertEquals(28, mandarin.size)
+        assertEquals("zh-CN-YunxiNeural", mandarin.first())
+        assertFalse(mandarin.any { it.contains("Dialect") })
+        assertFalse(mandarin.any { it.startsWith("zh-HK") || it.startsWith("zh-TW") })
+        // 「全部中文」范围仍保留方言与港澳台，便于对照试听。
+        assertEquals(46, allZh.size)
+        assertTrue(allZh.any { it.contains("Dialect") })
+        assertTrue(allZh.any { it.startsWith("zh-HK") })
     }
 
     @Test

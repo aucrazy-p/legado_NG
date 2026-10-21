@@ -1040,12 +1040,12 @@ object TtsEngineStore {
                                 script.contains("// @version 1.0.9")
                         ) &&
                 builtIn.script.contains("// @version 1.0.10")
-        val shouldUpdateTranslatorChineseNames = id == MICROSOFT_TRANSLATOR_ID &&
-                parseScriptMetadata(script)["version"] == "1.0.0" &&
-                parseScriptMetadata(builtIn.script)["version"] == "1.0.1"
-        val shouldUpdateTranslatorVoiceRefresh = id == MICROSOFT_TRANSLATOR_ID &&
-                parseScriptMetadata(script)["version"] == "1.0.1" &&
-                parseScriptMetadata(builtIn.script)["version"] == "1.0.2"
+        // 1.0.3 起音色目录回到内置精选子集：旧版（含曾尝试联网刷新的 1.0.2）一并覆盖。
+        val shouldUpdateTranslatorStaticCatalog = id == MICROSOFT_TRANSLATOR_ID &&
+                parseScriptMetadata(script)["version"].let {
+                    it == "1.0.0" || it == "1.0.1" || it == "1.0.2"
+                } &&
+                parseScriptMetadata(builtIn.script)["version"] == "1.0.3"
         val shouldUpdateMimoExpressiveFields = id == MIMO_V25_TTS_ID &&
                 (script.contains("// @version 1.0.0") ||
                     script.contains("// @version 1.0.1")) &&
@@ -1120,8 +1120,7 @@ object TtsEngineStore {
         return shouldUpdateMultiTtsTemplate ||
                 shouldUpdateStaticPreviewText ||
                 shouldUpdateNextEdgeProxy ||
-                shouldUpdateTranslatorChineseNames ||
-                shouldUpdateTranslatorVoiceRefresh ||
+                shouldUpdateTranslatorStaticCatalog ||
                 shouldUpdateMimoExpressiveFields ||
                 shouldUpdateMosslandClonedCatalog ||
                 shouldUpdateStepAudioPlanEndpoint ||
