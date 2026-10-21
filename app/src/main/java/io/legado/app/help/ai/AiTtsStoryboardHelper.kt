@@ -59,6 +59,16 @@ object AiTtsStoryboardHelper {
     private const val COMBINED_FALLBACK_SKILL_ASSET = "skills/tts_storyboard/modes/fallback-combined.md"
     private const val CACHE_DIR = "ai_tts_storyboard"
     private const val CACHE_VERSION = 17
+    // 分角色请求的正文瘦身：含候选片段的段落发全文，其余段落只发开头预览。
+    // 同一章会走分场景与分角色两次请求，全量正文等于把整章发两遍。
+    private const val CONTEXT_PREVIEW_CHARS = 30
+    private const val CONTEXT_PREVIEW_SUFFIX = "…"
+    private const val CONTEXT_FULL_CHAPTER_MAX = 8
+    // 角色库下发上限：代表台词与身份证据只发少量短样本，避免角色越多单次请求越贵。
+    private const val CAST_ROLE_SAMPLE_COUNT = 2
+    private const val CAST_ROLE_SAMPLE_CHARS = 60
+    private const val CAST_ROLE_EVIDENCE_COUNT = 2
+    private const val CAST_ROLE_EVIDENCE_CHARS = 60
     private const val IDENTITY_CACHE_VERSION = 2
     private const val EXPRESSIVE_CACHE_VERSION = 2
     private const val MEMORY_CACHE_TTL = 5 * 60 * 1000L
@@ -1437,11 +1447,36 @@ object AiTtsStoryboardHelper {
             allowNewCharacters = false,
             knownCharacters = characters.map { it.toKnownCharacter() },
             knownCastRoles = castRoles.map { it.toKnownCastRole() },
-            contextParagraphs = paragraphs,
+            contextParagraphs = contextParagraphsFor(targetUnits),
             scenes = scenes,
             units = targetUnits,
             targetUnitIds = targetUnits.map { it.unitId }
         )
+    }
+
+    /**
+     * 分角色请求的正文裁剪：只有包含候选片段的段落发全文，其余段落保留段号与前若干字。
+     * 场景信息由 scenes 单独下发，单元自身还带 textPreview/cueBefore/cueAfter，
+     * 因此整章正文在本次请求中属于重复内容。
+     */
+    private fun StoryboardRequest.contextParagraphsFor(
+        targetUnits: List<CandidateUnit>
+    ): List<ContextParagraph> {
+        if (paragraphs.size <= CONTEXT_FULL_CHAPTER_MAX) return paragraphs
+        val unitParagraphs = targetUnits
+            .flatMap { it.ranges }
+            .mapTo(mutableSetOf()) { it.paragraphIndex }
+        return paragraphs.map { paragraph ->
+            if (paragraph.paragraphIndex in unitParagraphs ||
+                paragraph.text.length <= CONTEXT_PREVIEW_CHARS
+            ) {
+                paragraph
+            } else {
+                paragraph.copy(
+                    text = paragraph.text.take(CONTEXT_PREVIEW_CHARS).trimEnd() + CONTEXT_PREVIEW_SUFFIX
+                )
+            }
+        }
     }
 
     private fun BookCharacter.toKnownCharacter(): KnownCharacter {
@@ -1464,15 +1499,15 @@ object AiTtsStoryboardHelper {
             .filter(String::isNotBlank)
             .distinct()
         val representativeTexts = GSON.fromJsonObject<List<String>>(representativeTextsJson).getOrNull().orEmpty()
-            .map { it.trim().take(120) }
+            .map { it.trim().take(CAST_ROLE_SAMPLE_CHARS) }
             .filter { it.isNotBlank() }
             .distinct()
-            .take(3)
+            .take(CAST_ROLE_SAMPLE_COUNT)
         val evidenceItems = GSON.fromJsonObject<List<String>>(identityEvidenceJson).getOrNull().orEmpty()
-            .map { it.trim().take(120) }
+            .map { it.trim().take(CAST_ROLE_EVIDENCE_CHARS) }
             .filter { it.isNotBlank() }
             .distinct()
-            .take(4)
+            .take(CAST_ROLE_EVIDENCE_COUNT)
         return KnownCastRole(
             castRoleId = id,
             name = name,
