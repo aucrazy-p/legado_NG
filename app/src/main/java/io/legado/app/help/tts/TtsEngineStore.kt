@@ -1043,6 +1043,9 @@ object TtsEngineStore {
         val shouldUpdateTranslatorChineseNames = id == MICROSOFT_TRANSLATOR_ID &&
                 parseScriptMetadata(script)["version"] == "1.0.0" &&
                 parseScriptMetadata(builtIn.script)["version"] == "1.0.1"
+        val shouldUpdateTranslatorVoiceRefresh = id == MICROSOFT_TRANSLATOR_ID &&
+                parseScriptMetadata(script)["version"] == "1.0.1" &&
+                parseScriptMetadata(builtIn.script)["version"] == "1.0.2"
         val shouldUpdateMimoExpressiveFields = id == MIMO_V25_TTS_ID &&
                 (script.contains("// @version 1.0.0") ||
                     script.contains("// @version 1.0.1")) &&
@@ -1118,6 +1121,7 @@ object TtsEngineStore {
                 shouldUpdateStaticPreviewText ||
                 shouldUpdateNextEdgeProxy ||
                 shouldUpdateTranslatorChineseNames ||
+                shouldUpdateTranslatorVoiceRefresh ||
                 shouldUpdateMimoExpressiveFields ||
                 shouldUpdateMosslandClonedCatalog ||
                 shouldUpdateStepAudioPlanEndpoint ||

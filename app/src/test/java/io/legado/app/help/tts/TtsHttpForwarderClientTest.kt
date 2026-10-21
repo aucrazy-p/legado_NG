@@ -547,7 +547,7 @@ class TtsHttpForwarderClientTest {
     fun microsoftTranslatorChineseCatalogUpdatePreservesUserSettings() {
         val builtIn = scriptEngineFromAssetFile("microsoft_translator.js")
         val saved = builtIn.copy(
-            script = builtIn.script.replaceFirst("// @version 1.0.1", "// @version 1.0.0"),
+            script = builtIn.script.replaceFirst("// @version 1.0.2", "// @version 1.0.1"),
             name = "我的微软翻译",
             enabled = false,
             activeVoiceId = "zh-CN-XiaoxiaoNeural",
@@ -557,6 +557,7 @@ class TtsHttpForwarderClientTest {
         val updated = TtsEngineStore.updateDefaultScriptForTest(saved, builtIn)
 
         assertEquals(builtIn.script, updated.script)
+        assertTrue(updated.script.contains("// @version 1.0.2"))
         assertEquals(saved.name, updated.name)
         assertEquals(saved.enabled, updated.enabled)
         assertEquals(saved.activeVoiceId, updated.activeVoiceId)

@@ -1,6 +1,6 @@
 // @name 微软翻译
 // @schema 1
-// @version 1.0.1
+// @version 1.0.2
 // @uuid builtin_microsoft_translator
 // @author Legado
 // @url https://dev.microsofttranslator.com/apps/endpoint?api-version=1.0
@@ -13,7 +13,7 @@
 // @defaultPitch 50
 // @sampleText 前不见古人，后不见来者。念天地之悠悠，独怆然而涕下。
 // @capabilities style_tags,emotion,synthesis_speed,synthesis_volume,synthesis_pitch
-// @description 微软翻译中文语音，仅保留中文名称的普通话、方言和多语言发音人。
+// @description 微软翻译中文语音。音色列表可联网刷新（缓存 24 小时），默认只保留普通话发音人；刷新失败时回退内置目录。
 
 // 音色与风格来自 2026-10-19 官方 voices/list；只保留中文名称的普通 Neural 音色。
 // 默认云希；多语言音色固定使用中文，方言保留目录语言。目录内置，加载列表不联网。
@@ -26,6 +26,11 @@ var TRANSLATOR_TOKEN_KEY = "builtin_microsoft_translator_token_v1";
 var TRANSLATOR_REFRESH_EARLY_MS = 60000;
 var TRANSLATOR_DEFAULT_VOICE = "zh-CN-YunxiNeural";
 var TRANSLATOR_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
+// 音色列表刷新：联网拉 voices/list，缓存 24 小时；失败一律回退下面的内置目录。
+var TRANSLATOR_VOICE_CACHE_KEY = "builtin_microsoft_translator_voice_cache_v1";
+var TRANSLATOR_VOICE_CACHE_TTL_MS = 86400000;
+var TRANSLATOR_VOICE_SCOPE_MANDARIN = "mandarin";
+var TRANSLATOR_VOICE_SCOPE_ALL = "allZh";
 var TRANSLATOR_VOICES = [
   {
     "id": "zh-CN-YunxiNeural",
@@ -2806,11 +2811,223 @@ function expressiveStyleAliases() {
 }
 
 function options() {
-    return [{ key: "timeout", label: "超时秒数", type: "number", defaultValue: "30" }];
+    return [
+        { key: "timeout", label: "超时秒数", type: "number", defaultValue: "30" },
+        {
+            key: "voiceScope",
+            label: "音色范围",
+            type: "select",
+            values: [
+                { label: "普通话（推荐）", value: TRANSLATOR_VOICE_SCOPE_MANDARIN },
+                { label: "全部中文（含方言、港澳台）", value: TRANSLATOR_VOICE_SCOPE_ALL }
+            ],
+            defaultValue: TRANSLATOR_VOICE_SCOPE_MANDARIN
+        }
+    ];
+}
+
+function translatorIsArray(value) {
+    return Object.prototype.toString.call(value) === "[object Array]";
+}
+
+function translatorSourceGet(key) {
+    try {
+        return String(source.get(key) || "");
+    } catch (ignored) {
+        return "";
+    }
+}
+
+function translatorSourcePut(key, value) {
+    try {
+        source.put(key, value);
+    } catch (ignored) {
+    }
+}
+
+function translatorVoiceScope(options) {
+    var scope = options && options.voiceScope != null ? String(options.voiceScope) : "";
+    return scope === TRANSLATOR_VOICE_SCOPE_ALL ? TRANSLATOR_VOICE_SCOPE_ALL : TRANSLATOR_VOICE_SCOPE_MANDARIN;
+}
+
+function translatorVoiceScopeKeeps(locale, scope) {
+    var value = String(locale || "");
+    if (!value) return false;
+    if (scope === TRANSLATOR_VOICE_SCOPE_ALL) {
+        return /^(zh|wuu|yue)/.test(value);
+    }
+    return value === "zh-CN";
+}
+
+function translatorLocaleOfVoiceId(id) {
+    var match = /^([a-z]{2,3}-[A-Z]{2})/.exec(String(id || ""));
+    return match ? match[1] : "zh-CN";
+}
+
+function translatorStyleLabels() {
+    // 风格中文名沿用内置目录；刷新后出现的新风格先用原值，避免显示空白。
+    var labels = {};
+    for (var i = 0; i < TRANSLATOR_VOICES.length; i++) {
+        var styles = TRANSLATOR_VOICES[i].extra && TRANSLATOR_VOICES[i].extra.styles || [];
+        for (var j = 0; j < styles.length; j++) {
+            var style = styles[j];
+            if (style && style.value && !labels[style.value]) {
+                labels[style.value] = style.name || style.value;
+            }
+        }
+    }
+    return labels;
+}
+
+function translatorRemoteStyleIds(remote) {
+    var list = remote && remote.StyleList || [];
+    var ids = [];
+    for (var i = 0; i < list.length; i++) {
+        var item = list[i];
+        var value = item && typeof item === "object"
+            ? String(item.StyleName != null ? item.StyleName : item.style_name || "")
+            : String(item || "");
+        if (value && value !== "undefined" && value !== "null" && ids.indexOf(value) < 0) {
+            ids.push(value);
+        }
+    }
+    return ids;
+}
+
+function translatorMapRemoteVoice(remote, labels) {
+    var id = String(remote && remote.ShortName || "");
+    if (!id) return null;
+    var locale = String(remote.Locale || "");
+    var tag = remote.VoiceTag || {};
+    var categories = translatorIsArray(tag.ContentCategories) ? tag.ContentCategories : [];
+    var personalities = translatorIsArray(tag.VoicePersonalities) ? tag.VoicePersonalities : [];
+    var styleIds = translatorRemoteStyleIds(remote);
+    var styles = [];
+    for (var i = 0; i < styleIds.length; i++) {
+        styles.push({
+            id: styleIds[i],
+            name: labels[styleIds[i]] || styleIds[i],
+            value: styleIds[i]
+        });
+    }
+    var localName = String(remote.LocalName || "").trim();
+    var displayName = String(remote.DisplayName || "").trim();
+    return {
+        id: id,
+        name: localName || displayName || id,
+        language: locale,
+        gender: String(remote.Gender || "").toLowerCase(),
+        style: styles.length ? styles.length + " 种风格" : "",
+        tags: ["微软翻译", locale].concat(categories, personalities),
+        extra: {
+            provider: "microsoft-translator",
+            profile: personalities.join("/"),
+            source_locale: locale,
+            chinese_locales: [locale],
+            categories: categories,
+            personalities: personalities,
+            azure_styles: styleIds,
+            roles: [],
+            role_hints: [],
+            styles: styles
+        }
+    };
+}
+
+function translatorCachedVoices(now, scope) {
+    var raw = translatorSourceGet(TRANSLATOR_VOICE_CACHE_KEY);
+    if (!raw) return null;
+    try {
+        var cached = JSON.parse(raw);
+        if (!cached || cached.scope !== scope || !translatorIsArray(cached.list) || !cached.list.length) {
+            return null;
+        }
+        var age = now - Number(cached.at);
+        return age >= 0 && age < TRANSLATOR_VOICE_CACHE_TTL_MS ? cached.list : null;
+    } catch (ignored) {
+        return null;
+    }
+}
+
+function translatorFetchVoices(options) {
+    var scope = translatorVoiceScope(options);
+    var now = Date.now();
+    var cached = translatorCachedVoices(now, scope);
+    if (cached) return cached;
+    var timeout = translatorTimeout(options);
+    var endpoint = translatorEndpoint(timeout);
+    var url = "https://" + endpoint.region + ".tts.speech.microsoft.com/cognitiveservices/voices/list";
+    var response = Packages.org.jsoup.Jsoup.connect(url)
+        .ignoreContentType(true)
+        .ignoreHttpErrors(true)
+        .followRedirects(false)
+        .timeout(timeout * 1000)
+        .maxBodySize(4194304)
+        .header("Authorization", endpoint.token)
+        .header("User-Agent", "okhttp/4.5.0")
+        .get();
+    var statusCode = Number(response.statusCode());
+    if (statusCode !== 200) {
+        throw new Error("微软翻译：音色列表刷新失败（HTTP " + statusCode + "）");
+    }
+    var remoteList;
+    try {
+        remoteList = JSON.parse(String(response.body()));
+    } catch (ignored) {
+        throw new Error("微软翻译：音色列表不是有效 JSON");
+    }
+    if (!translatorIsArray(remoteList)) {
+        throw new Error("微软翻译：音色列表格式异常");
+    }
+    var labels = translatorStyleLabels();
+    var list = [];
+    for (var i = 0; i < remoteList.length; i++) {
+        var item = remoteList[i];
+        if (!item || !translatorVoiceScopeKeeps(item.Locale, scope)) continue;
+        var mapped = translatorMapRemoteVoice(item, labels);
+        if (mapped) list.push(mapped);
+    }
+    if (!list.length) {
+        throw new Error("微软翻译：刷新后的音色列表为空");
+    }
+    var chineseNamed = [];
+    var otherNamed = [];
+    for (var k = 0; k < list.length; k++) {
+        if (/[\u4e00-\u9fff]/.test(list[k].name)) {
+            chineseNamed.push(list[k]);
+        } else {
+            otherNamed.push(list[k]);
+        }
+    }
+    list = chineseNamed.concat(otherNamed);
+    translatorSourcePut(
+        TRANSLATOR_VOICE_CACHE_KEY,
+        JSON.stringify({ at: now, scope: scope, list: list })
+    );
+    return list;
+}
+
+function translatorBuiltInVoices(scope) {
+    var list = [];
+    for (var i = 0; i < TRANSLATOR_VOICES.length; i++) {
+        if (translatorVoiceScopeKeeps(TRANSLATOR_VOICES[i].language, scope)) {
+            list.push(TRANSLATOR_VOICES[i]);
+        }
+    }
+    return list.length ? list : TRANSLATOR_VOICES;
 }
 
 function voices(options, ctx) {
-    return TRANSLATOR_VOICES;
+    try {
+        return translatorFetchVoices(options || {});
+    } catch (error) {
+        // 断网或接口变更时回退内置目录，保证仍能选音色和朗读。
+        try {
+            java.log("微软翻译：音色列表刷新失败，已回退内置目录 —— " + error);
+        } catch (ignored) {
+        }
+        return translatorBuiltInVoices(translatorVoiceScope(options || {}));
+    }
 }
 
 function translatorTimeout(options) {
@@ -2819,12 +3036,56 @@ function translatorTimeout(options) {
     return Math.max(5, Math.min(120, Math.round(value)));
 }
 
+function translatorVoiceLookupList() {
+    // 合成路径只读本地缓存，绝不联网；缓存过期也照用，刷新交给 voices()。
+    var raw = translatorSourceGet(TRANSLATOR_VOICE_CACHE_KEY);
+    if (raw) {
+        try {
+            var cached = JSON.parse(raw);
+            if (cached && translatorIsArray(cached.list) && cached.list.length) {
+                return cached.list;
+            }
+        } catch (ignored) {
+        }
+    }
+    return TRANSLATOR_VOICES;
+}
+
+function translatorStubVoice(id) {
+    // 目录里没有也照常合成：可能是刷新范围外的音色，或服务器新增的音色。
+    var locale = translatorLocaleOfVoiceId(id);
+    return {
+        id: id,
+        name: id,
+        language: locale,
+        gender: "",
+        style: "",
+        tags: ["微软翻译", locale],
+        extra: {
+            provider: "microsoft-translator",
+            profile: "",
+            source_locale: locale,
+            chinese_locales: [locale],
+            categories: [],
+            personalities: [],
+            azure_styles: [],
+            roles: [],
+            role_hints: [],
+            styles: []
+        }
+    };
+}
+
 function translatorVoice(voice) {
     var id = String(voice && voice.id || TRANSLATOR_DEFAULT_VOICE);
-    for (var i = 0; i < TRANSLATOR_VOICES.length; i++) {
-        if (TRANSLATOR_VOICES[i].id === id) return TRANSLATOR_VOICES[i];
+    var list = translatorVoiceLookupList();
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].id === id) return list[i];
     }
-    throw new Error("微软翻译：音色不在内置目录中");
+    for (var j = 0; j < TRANSLATOR_VOICES.length; j++) {
+        if (TRANSLATOR_VOICES[j].id === id) return TRANSLATOR_VOICES[j];
+    }
+    return translatorStubVoice(id);
 }
 
 function translatorSelectedStyle(voice, catalogVoice) {
