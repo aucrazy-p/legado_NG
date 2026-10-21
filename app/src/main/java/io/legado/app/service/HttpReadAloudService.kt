@@ -1503,6 +1503,7 @@ class HttpReadAloudService : BaseReadAloudService(),
         }
         val chapterIndex = ReadBook.durChapterIndex + 1
         if (chapterIndex !in 0 until ReadBook.chapterSize) {
+            AppLog.put("AI听书分镜预处理跳过：章节 $chapterIndex 超出范围（共 ${ReadBook.chapterSize} 章）")
             return null
         }
         return lifecycleScope.async(IO) {
@@ -1528,20 +1529,69 @@ class HttpReadAloudService : BaseReadAloudService(),
         if (firstChapterIndex > maxChapterIndex) {
             return
         }
+        val nextChapterIndex = firstChapterIndex - 1
+        AppLog.put(
+            "AI听书分镜预处理：启动，目标 $firstChapterIndex..$maxChapterIndex（预取章数=$preloadCount，当前章=${ReadBook.durChapterIndex}）"
+        )
         backgroundStoryboardPreloadJob = lifecycleScope.launch(IO) {
-            if (nextStoryboardTask?.await() == null) return@launch
+            // 下一章失败不应放弃其余章节：后继章节各自独立尝试，失败只跳过自身。
+            val nextReady = try {
+                nextStoryboardTask?.await()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                AppLog.put(
+                    "AI听书分镜预处理：章节 $nextChapterIndex 失败，继续尝试后续章节\n${error.localizedMessage}",
+                    error
+                )
+                null
+            }
+            if (nextReady == null) {
+                AppLog.put(
+                    "AI听书分镜预处理：章节 $nextChapterIndex 未完成，继续尝试 $firstChapterIndex..$maxChapterIndex"
+                )
+            }
+            var produced = 0
             for (chapterIndex in firstChapterIndex..maxChapterIndex) {
                 currentCoroutineContext().ensureActive()
-                preGenerateAiStoryboard(chapterIndex)
+                if (preGenerateAiStoryboard(chapterIndex) != null) produced++
             }
+            if (produced == 0) {
+                // 全书首次跳到远端章节时正文/缓存往往还没就绪，本轮必然全空；稍等后重试一次。
+                AppLog.put("AI听书分镜预处理：本轮无产出，20 秒后重试一次")
+                delay(20_000)
+                for (chapterIndex in firstChapterIndex..maxChapterIndex) {
+                    currentCoroutineContext().ensureActive()
+                    preGenerateAiStoryboard(chapterIndex)
+                }
+            }
+            AppLog.put("AI听书分镜预处理：本轮结束（目标到 $maxChapterIndex）")
         }
     }
 
     private suspend fun preGenerateAiStoryboard(chapterIndex: Int): ChapterStoryboard? {
-        val book = ReadBook.book ?: return null
-        val chapter = loadStoryboardTextChapter(chapterIndex) ?: return null
+        val book = ReadBook.book ?: run {
+            AppLog.put("AI听书分镜预处理跳过：章节 $chapterIndex 书籍为空")
+            return null
+        }
+        val chapter = try {
+            loadStoryboardTextChapter(chapterIndex)
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            AppLog.put(
+                "AI听书分镜预处理失败：章节 $chapterIndex 正文加载异常\n${error.localizedMessage}",
+                error
+            )
+            return null
+        }
+        if (chapter == null) {
+            AppLog.put("AI听书分镜预处理跳过：章节 $chapterIndex 正文取不到（未下载或章节不存在）")
+            return null
+        }
         val content = AiTtsStoryboardHelper.readAloudContentFromChapter(chapter, readAloudByPage)
-            .takeIf { it.isNotBlank() } ?: return null
+        if (content.isBlank()) {
+            AppLog.put("AI听书分镜预处理跳过：章节 $chapterIndex 朗读正文为空")
+            return null
+        }
         val workKey = BookCharacterProfile.workKey(book.name, book.author)
         val characters = appDb.bookCharacterDao.getCharacters(workKey)
         return runCatching {
